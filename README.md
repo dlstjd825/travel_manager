@@ -1,0 +1,35 @@
+# Roam/Plan 로컬 실행
+
+## 프로젝트 구조
+
+```text
+travel_manager/
+├── app.py                 # Flask 앱과 페이지 라우트
+├── database/              # SQLite 스키마와 연결 관리
+├── services/              # 지도 검색, 거리 계산, 일정 추천
+├── templates/             # 페이지별 HTML
+├── static/css/            # 공통 CSS와 페이지별 CSS
+├── instance/              # 로컬 데이터베이스와 업로드 파일
+└── TODO.md                # 다음 개발 작업
+```
+
+CSS는 `base.css`와 각 페이지의 `index.css`, `trip.css`, `itinerary.css`, `expenses.css`로 나뉩니다.
+
+## 설치 및 실행
+
+```powershell
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+```
+
+`.env`에 `GOOGLE_MAPS_API_KEY`를 설정한 다음 실행합니다. `GOOGLE_MAPS_BROWSER_API_KEY`는 선택 항목이며, 비워 두면 같은 키로 브라우저 지도를 표시합니다. Maps Demo Key는 Places API (New)와 Maps JavaScript API를 모두 지원하므로 개인 테스트에서는 하나의 키를 쓸 수 있습니다.
+
+```powershell
+python app.py
+```
+
+Maps Demo Key는 청구 정보 없이 시제품을 시험하기 위한 키이며 사용량이 제한되고 운영용으로 설계되지는 않았습니다. 일반 Cloud 프로젝트 키를 쓰는 경우 결제 계정과 두 API 활성화가 필요합니다. 보안을 위해 일반 키는 서버 검색용과 브라우저 지도용으로 분리하고, 브라우저 키에는 로컬 HTTP 리퍼러 제한을 설정하세요. `.env`는 Git에 올리지 마세요.
+
+동적 지도는 월 10,000회까지 무료 사용량이 제공되며, 이후 첫 요금 구간은 1,000회당 미화 $7입니다. 사용량과 요금은 Google Maps Platform 가격표에서 확인하세요.
+
+검색 결과를 선택하면 좌표와 Place ID가 여행에 연결됩니다. 장소 이름과 주소는 개인 메모로 직접 입력합니다. Google Place ID는 저장하며, Google에서 받은 좌표는 저장 후 30일이 지나면 자동으로 지웁니다.

@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ trip.title }} · 여행 플래너</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/trip.css') }}">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar"><a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">✳</span> roam<span class="brand-light">/</span>plan</a><a class="back-link" href="{{ url_for('index') }}">← 내 여행</a></header>
+    <section class="detail-hero"><h1>{{ trip.title }}</h1><div class="trip-period-row"><p class="intro">{{ trip.start_date }} — {{ trip.end_date }} <span>·</span> {{ night_count }}박 {{ day_count }}일</p><details class="trip-date-edit"><summary>기간 수정</summary><form method="post" action="{{ url_for('update_trip_dates', trip_id=trip.id) }}" class="date-edit-form"><label>시작일<input name="start_date" type="date" value="{{ trip.start_date }}" required></label><label>종료일<input name="end_date" type="date" value="{{ trip.end_date }}" required></label><button class="primary-button" type="submit">저장</button></form></details></div><div class="trip-page-actions"><a class="primary-button itinerary-manage-link" href="{{ url_for('trip_itinerary', trip_id=trip.id) }}"><span class="button-label">일정 관리</span><span aria-hidden="true">↗</span></a><a class="primary-button itinerary-manage-link" href="{{ url_for('trip_expenses', trip_id=trip.id) }}"><span class="button-label">예산·영수증</span><span aria-hidden="true">↗</span></a></div></section>
+    {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="notices">{% for category, message in messages %}<p class="notice {{ category }}">{{ message }}</p>{% endfor %}</div>{% endif %}{% endwith %}
+
+    <section class="detail-grid">
+      <div class="place-entry-column">
+      <article class="panel stay-panel" id="stay-panel">
+        <div class="panel-heading"><div><h2>숙소</h2></div></div>
+        {% if accommodation %}<div class="accommodation-summary"><div><strong>{{ accommodation.name }}</strong><p>{{ accommodation.address }}</p></div><button type="button" class="text-button edit-toggle" data-target="accommodation-editor">수정하기</button></div><button type="button" class="secondary-button accommodation-add-button" data-target="accommodation-editor">숙소 추가 <span>＋</span></button>{% endif %}
+        <div id="accommodation-editor" {% if accommodation and not accommodation_edit_open %}hidden{% endif %}>
+          <form method="post" action="{{ url_for('search_trip_places', trip_id=trip.id) }}" class="search-form">
+            <input type="hidden" name="target" value="accommodation">
+            <label>숙소 검색<input name="query" value="{{ accommodation_search_query }}" placeholder="숙소 이름이나 주소" required></label>
+            <button class="secondary-button" type="submit">검색</button>
+          </form>
+          {% if accommodation_search_results %}<div class="search-results"><p class="results-caption">검색 결과 · 선택해서 숙소 정보를 입력하세요</p>{% for result in accommodation_search_results %}
+            <div class="search-result"><div><strong>{{ result.label }}</strong><span>{{ result.formatted_address }}</span></div><button type="button" class="select-location" data-form="accommodation-form" data-place-id="{{ result.provider_place_id }}" data-name="{{ result.label }}" data-address="{{ result.formatted_address }}" data-lat="{{ result.latitude }}" data-lng="{{ result.longitude }}">선택</button><a class="maps-attribution" href="https://www.google.com/maps/search/?api=1&query={{ result.label|urlencode }}&query_place_id={{ result.provider_place_id|urlencode }}" target="_blank" rel="noopener">지도에서 보기</a></div>
+          {% endfor %}</div>{% endif %}
+          <form id="accommodation-form" method="post" action="{{ url_for('save_accommodation', trip_id=trip.id) }}" class="trip-form">
+            <input type="hidden" name="google_place_id" value="{{ accommodation.google_place_id if accommodation else '' }}">
+            <input type="hidden" name="latitude" value="{{ accommodation.latitude if accommodation and accommodation.latitude is not none else '' }}">
+            <input type="hidden" name="longitude" value="{{ accommodation.longitude if accommodation and accommodation.longitude is not none else '' }}">
+            <label>숙소명<input name="name" maxlength="150" placeholder="검색 결과를 선택하세요" value="{{ accommodation.name if accommodation else '' }}" {% if not accommodation %}disabled{% endif %} required></label>
+            <label>주소<input name="address" maxlength="300" placeholder="검색 결과의 주소" value="{{ accommodation.address if accommodation else '' }}" {% if not accommodation %}disabled{% endif %} required></label>
+            <div class="accommodation-actions"><button class="secondary-button" type="submit" {% if not accommodation %}disabled{% endif %}>{% if accommodation %}변경 저장{% else %}숙소 추가{% endif %}</button>{% if accommodation %}<button class="text-button cancel-edit" type="button" data-target="accommodation-editor">취소</button>{% endif %}</div>
+          </form>
+        </div>
+      </article>
+
+      <article class="panel place-add-panel">
+        <div class="panel-heading"><div><h2>가고 싶은 장소 추가</h2></div></div>
+        <p class="form-hint">검색 결과를 선택하면 이름과 주소가 입력됩니다. 저장 전에 수정할 수 있습니다.</p>
+        <div class="place-category-switch" role="group" aria-label="장소 유형">
+          <button type="button" class="category-option {% if place_search_category == 'attraction' %}active{% endif %}" data-category="attraction">관광지</button>
+          <button type="button" class="category-option {% if place_search_category == 'restaurant' %}active{% endif %}" data-category="restaurant">식당</button>
+        </div>
+        <form method="post" action="{{ url_for('search_trip_places', trip_id=trip.id) }}" class="search-form">
+          <input type="hidden" name="target" value="places">
+          <input id="search-category" type="hidden" name="category" value="{{ place_search_category }}">
+          <label><span id="place-search-label">{{ '식당 검색' if place_search_category == 'restaurant' else '관광지 검색' }}</span><input name="query" value="{{ place_search_query }}" placeholder="장소 이름이나 종류" required></label>
+          <button class="secondary-button" type="submit">검색</button>
+        </form>
+        {% if place_search_results %}<div class="search-results"><p class="results-caption">검색 결과 · 선택해서 장소 정보를 입력하세요</p>{% for result in place_search_results %}
+          <div class="search-result"><div><strong>{{ result.label }}</strong><span>{{ result.formatted_address }}</span></div><button type="button" class="select-location" data-form="place-form" data-category="{{ place_search_category }}" data-place-id="{{ result.provider_place_id }}" data-name="{{ result.label }}" data-address="{{ result.formatted_address }}" data-lat="{{ result.latitude }}" data-lng="{{ result.longitude }}">선택</button><a class="maps-attribution" href="https://www.google.com/maps/search/?api=1&query={{ result.label|urlencode }}&query_place_id={{ result.provider_place_id|urlencode }}" target="_blank" rel="noopener">지도에서 보기</a></div>
+        {% endfor %}</div>{% endif %}
+        <form id="place-form" method="post" action="{{ url_for('add_place', trip_id=trip.id) }}" class="trip-form">
+          <input type="hidden" name="provider_place_id" value="">
+          <input id="place-form-category" type="hidden" name="category" value="{{ place_search_category }}">
+          <input type="hidden" name="latitude" value=""><input type="hidden" name="longitude" value="">
+          <label>장소 이름<input name="name" maxlength="180" placeholder="검색 결과를 선택해 주세요" disabled required></label>
+          <label>주소<input name="address" maxlength="300" placeholder="검색 결과를 선택하면 주소가 입력됩니다" disabled></label>
+          <button class="primary-button" type="submit" disabled>장소 추가 <span>↗</span></button>
+        </form>
+      </article>
+      </div>
+
+      <article class="panel places-panel">
+        <div class="panel-heading"><div><h2>등록한 장소 <span class="place-count">{{ places|length + (1 if accommodation else 0) }}</span></h2></div></div>
+        {% if places or accommodation %}<div class="place-list">
+          {% if accommodation %}<div class="place-row" id="row-accommodation"><span class="place-pin category-pin stay-pin" role="img" aria-label="숙소"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11 12 4l9 7M5 10v10h14V10M9 20v-6h6v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div class="place-info"><h3>{{ accommodation.name }}</h3><p>{{ accommodation.address }}</p></div><form method="post" action="{{ url_for('delete_accommodation', trip_id=trip.id) }}" onsubmit="return confirm('등록한 숙소를 삭제할까요?');"><button type="submit" class="icon-button" aria-label="숙소 삭제" title="숙소 삭제">×</button></form></div>{% endif %}
+          {% for place in places %}
+          <div class="place-row" id="row-place-{{ place.id }}"><span class="place-pin category-pin {{ 'restaurant-pin' if place.category == 'restaurant' else 'attraction-pin' }}" role="img" aria-label="{{ '식당' if place.category == 'restaurant' else '관광지' }}">{% if place.category == 'restaurant' %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v7m-3-7v4a3 3 0 0 0 6 0V3M6 10v11m10-18v18m0-18c3 2 4 5 4 8h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{% else %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-8h6v8M3 9h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{% endif %}</span><div class="place-info"><h3>{{ place.name }} <small class="visit-day">{% if place_days.get(place.id) %}Day{{ place_days[place.id] }}{% else %}일정 미정{% endif %}</small></h3><p>{{ place.address or '주소 미입력' }}</p></div>
+            <form method="post" action="{{ url_for('delete_place', trip_id=trip.id, place_id=place.id) }}" onsubmit="return confirm('이 장소를 삭제할까요?');"><button class="icon-button" aria-label="{{ place.name }} 삭제" title="장소 삭제">×</button></form>
+          </div>
+          {% endfor %}</div>{% else %}<div class="empty-state compact"><h3>아직 등록한 장소가 없습니다</h3><p>숙소와 관광지 또는 식당을 추가해 보세요.</p></div>{% endif %}
+      </article>
+    </section>
+    <footer>MADE FOR THE JOURNEY <span>✳</span></footer>
+  </main>
+  <script>
+    document.querySelectorAll('.edit-toggle, .cancel-edit').forEach((button) => {
+      button.addEventListener('click', () => {
+        const editor = document.getElementById(button.dataset.target);
+        editor.hidden = !editor.hidden;
+      });
+    });
+    document.querySelectorAll('.accommodation-add-button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const editor = document.getElementById(button.dataset.target);
+        editor.hidden = false;
+        editor.scrollIntoView({behavior: 'smooth', block: 'center'});
+      });
+    });
+    document.querySelectorAll('.category-option').forEach((button) => {
+      button.addEventListener('click', () => {
+        document.querySelectorAll('.category-option').forEach((option) => option.classList.remove('active'));
+        button.classList.add('active');
+        const category = button.dataset.category;
+        document.getElementById('search-category').value = category;
+        document.getElementById('place-form-category').value = category;
+        document.getElementById('place-search-label').textContent = category === 'restaurant' ? '식당 검색' : '관광지 검색';
+      });
+    });
+    document.querySelectorAll('.select-location').forEach((button) => {
+      button.addEventListener('click', () => {
+        const form = document.getElementById(button.dataset.form);
+        form.elements.latitude.value = button.dataset.lat;
+        form.elements.longitude.value = button.dataset.lng;
+        const idField = form.elements.google_place_id || form.elements.provider_place_id;
+        idField.value = button.dataset.placeId;
+        if (button.dataset.category) {
+          document.getElementById('place-form-category').value = button.dataset.category;
+        }
+        form.elements.name.value = button.dataset.name;
+        form.elements.address.value = button.dataset.address;
+        form.querySelectorAll('input:not([type="hidden"]), button[type="submit"]').forEach((field) => {
+          field.disabled = false;
+        });
+        form.scrollIntoView({behavior: 'smooth', block: 'center'});
+        form.querySelector('input[name="name"]').focus();
+      });
+    });
+  </script>
+</body>
+</html>
