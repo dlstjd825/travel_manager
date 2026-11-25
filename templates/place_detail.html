@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ place.name }} · {{ trip.title }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/trip.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/itinerary.css') }}">
+</head>
+<body><main class="shell place-journal-page">
+  <header class="topbar"><a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">✳</span> roam<span class="brand-light">/</span>plan</a><a class="back-link" href="{{ url_for('trip_places', trip_id=trip.id) }}">← 장소 목록</a></header>
+  {% set active_page = 'places' %}
+  <section class="trip-section-heading place-journal-heading"><div class="trip-section-heading-copy"><p class="trip-section-kicker">{{ trip.city }}{% if place.day_number %} · Day {{ place.day_number }}{% endif %}</p><h1>{{ place.name }}</h1><p>{{ place.address or '주소 미입력' }}</p></div></section>
+  {% include '_trip_nav.html' %}
+  {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="notices">{% for category, message in messages %}<p class="notice {{ category }}">{{ message }}</p>{% endfor %}</div>{% endif %}{% endwith %}
+
+  <section class="place-journal-grid">
+    <div class="place-journal-left-column">
+    <article class="panel place-journal-photos">
+      <div class="panel-heading"><div><h2>사진</h2><p class="overview-caption">사진을 올리고 짧은 설명을 함께 남길 수 있어요. 사진이 많으면 좌우로 넘겨 보세요.</p></div></div>
+      <form class="place-photo-upload" method="post" enctype="multipart/form-data" action="{{ url_for('add_place_photos', trip_id=trip.id, place_id=place.id) }}">
+        <label>사진 선택<input type="file" name="photos" accept=".jpg,.jpeg,.png,.webp,.heic,.heif" multiple required><small>한 번에 최대 10장 · JPG, PNG, WEBP, HEIC, HEIF</small></label>
+        <label>사진 설명<input name="caption" maxlength="240" placeholder="선택 입력 · 선택한 사진에 함께 적용됩니다"></label>
+        <button class="secondary-button" type="submit">사진 올리기</button>
+      </form>
+      {% if photos %}<div class="place-photo-grid">{% for photo in photos %}<figure class="place-photo-card"><a href="{{ url_for('place_photo', trip_id=trip.id, place_id=place.id, photo_id=photo.id) }}" target="_blank" rel="noopener"><img src="{{ url_for('place_photo', trip_id=trip.id, place_id=place.id, photo_id=photo.id) }}" alt="{{ photo.caption or photo.original_file_name }}" loading="lazy"></a><figcaption><span>{{ photo.caption or photo.original_file_name }}</span><form method="post" action="{{ url_for('delete_place_photo', trip_id=trip.id, place_id=place.id, photo_id=photo.id) }}" onsubmit="return confirm('이 사진을 삭제할까요?');"><button class="icon-button" type="submit" aria-label="사진 삭제">×</button></form></figcaption></figure>{% endfor %}</div>{% else %}<div class="overview-empty place-journal-empty"><p>아직 올린 사진이 없습니다.</p></div>{% endif %}
+    </article>
+
+    <article class="panel place-journal-notes">
+      <div class="panel-heading"><div><h2>장소 기록</h2><p class="overview-caption">장소 정보와 여행 중 느낀 점을 기록해 두세요.</p></div></div>
+      <form class="place-journal-form" method="post" action="{{ url_for('save_place_journal', trip_id=trip.id, place_id=place.id) }}">
+        <label>장소 정보<textarea name="information" rows="5" maxlength="10000" placeholder="운영 시간, 예약 정보, 가고 싶은 이유 등">{{ journal.information if journal else '' }}</textarea></label>
+        <label>느낀 점<textarea name="thoughts" rows="6" maxlength="10000" placeholder="방문 후 기억하고 싶은 점을 적어 보세요.">{{ journal.thoughts if journal else '' }}</textarea></label>
+        <button class="primary-button" type="submit">기록 저장</button>
+      </form>
+      {% if place.visit_day %}<a class="journal-day-link" href="{{ url_for('itinerary_day_detail', trip_id=trip.id, day_number=place.day_number) }}">Day {{ place.day_number }} 세부 일정으로 돌아가기 →</a>{% endif %}
+    </article>
+    </div>
+
+    <article class="panel place-journal-expenses">
+      <div class="panel-heading"><div><h2>이 장소의 지출 <span class="place-count">{{ expenses|length }}</span></h2><p class="overview-caption">저장한 내역은 예산·영수증 합계에도 포함됩니다.</p></div></div>
+      <form class="place-journal-expense-form" method="post" enctype="multipart/form-data" action="{{ url_for('add_trip_expense', trip_id=trip.id) }}">
+        <input type="hidden" name="place_id" value="{{ place.id }}">
+        <label>항목 이름<input name="title" maxlength="180" placeholder="예: 입장권, 점심 식사" required></label>
+        <div class="place-journal-expense-row"><label>분류<select name="category">{% for category in expense_categories %}<option value="{{ category }}" {% if (place.category == 'restaurant' and category == '식비') or (place.category == 'attraction' and category == '관광·티켓') %}selected{% endif %}>{{ category }}</option>{% endfor %}</select></label><label>금액<input type="number" name="amount" min="0" step="0.01" required></label><label>통화<select name="currency">{% for currency in currencies %}<option value="{{ currency }}" {% if currency == budget_currency %}selected{% endif %}>{{ currency }}</option>{% endfor %}</select></label></div>
+        <label>날짜<input type="date" name="expense_date" value="{{ expense_date }}" min="{{ trip.start_date }}" max="{{ trip.end_date }}" required></label>
+        <label>메모<textarea name="note" rows="2" maxlength="1000" placeholder="선택 입력"></textarea></label>
+        <label>영수증 또는 티켓 파일<input type="file" name="attachment" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf"><small>JPG, PNG, WEBP, HEIC, HEIF, PDF · 최대 32MB</small></label>
+        <button class="secondary-button" type="submit">지출 저장</button>
+      </form>
+      {% if expenses %}<ul class="place-journal-expense-list">{% for expense in expenses %}<li><div class="place-journal-expense-main"><strong>{{ expense.title }}</strong><small>{{ expense.expense_date }} · {{ expense.category }}</small><b>{{ '{:,.2f}'.format(expense.amount) }} {{ expense.currency }}</b>{% if expense.note %}<p>{{ expense.note }}</p>{% endif %}{% if expense.stored_file_name %}<a href="{{ url_for('trip_expense_attachment', trip_id=trip.id, expense_id=expense.id) }}" target="_blank" rel="noopener">📎 {{ expense.original_file_name }}</a>{% endif %}</div><form method="post" action="{{ url_for('delete_trip_expense', trip_id=trip.id, expense_id=expense.id) }}" onsubmit="return confirm('이 지출 기록을 삭제할까요?');"><input type="hidden" name="return_to_place" value="1"><button type="submit" class="icon-button" aria-label="지출 기록 삭제">×</button></form></li>{% endfor %}</ul>{% else %}<div class="overview-empty place-journal-empty"><p>아직 이 장소에 연결된 지출이 없습니다.</p></div>{% endif %}
+    </article>
+
+  </section>
+  <footer>MADE FOR THE JOURNEY <span>✳</span></footer>
+</main></body></html>

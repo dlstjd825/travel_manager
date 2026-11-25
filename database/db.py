@@ -46,12 +46,18 @@ def init_db():
             "coordinates_updated_at": "TEXT",
             "category": "TEXT NOT NULL DEFAULT 'attraction'",
         },
+        "trip_expenses": {
+            "place_id": "INTEGER REFERENCES places(id) ON DELETE SET NULL",
+        },
     }
     for table, columns in migrations.items():
         existing = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
         for column, column_type in columns.items():
             if column not in existing:
                 connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_trip_expenses_place ON trip_expenses(place_id, expense_date)"
+    )
     connection.commit()
 
 

@@ -1,0 +1,8 @@
+<nav class="trip-module-nav" aria-label="여행 메뉴">
+  <a class="{{ 'active' if active_page == 'overview' else '' }}" href="{{ url_for('trip_detail', trip_id=trip.id) }}">여행 개요</a>
+  <a class="{{ 'active' if active_page == 'transport' else '' }}" href="{{ url_for('trip_transport', trip_id=trip.id) }}">교통</a>
+  <a class="{{ 'active' if active_page == 'accommodation' else '' }}" href="{{ url_for('trip_accommodation', trip_id=trip.id) }}">숙소</a>
+  <a class="{{ 'active' if active_page == 'places' else '' }}" href="{{ url_for('trip_places', trip_id=trip.id) }}">장소 추가</a>
+  <a class="{{ 'active' if active_page == 'itinerary' else '' }}" href="{{ url_for('trip_itinerary', trip_id=trip.id) }}">일정 관리</a>
+  <a class="{{ 'active' if active_page == 'expenses' else '' }}" href="{{ url_for('trip_expenses', trip_id=trip.id) }}">예산·영수증</a>
+</nav>

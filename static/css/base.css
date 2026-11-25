@@ -7,6 +7,98 @@
   text-decoration: none;
 }
 
+.trip-module-nav {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 24px;
+}
+
+.trip-module-nav a {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  border: 1px solid #e2e8e1;
+  border-radius: 9px;
+  background: #fff;
+  color: #52675a;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+}
+
+.trip-module-nav a:hover,
+.trip-module-nav a.active {
+  border-color: #bfd2c1;
+  background: #eaf3ea;
+  color: #365b4a;
+}
+
+.trip-section-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 38px 0 22px;
+}
+
+.trip-section-heading-copy {
+  min-width: 0;
+}
+
+.trip-section-kicker {
+  margin: 0 0 5px;
+  color: #829087;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.trip-section-heading h1 {
+  margin: 0;
+  font-size: 34px;
+  letter-spacing: -1.2px;
+}
+
+.trip-section-heading-copy > p:last-child {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.place-detail-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.place-detail-link:hover {
+  color: #365b4a;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 760px) {
+  .trip-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 14px;
+    padding: 32px 0 20px;
+  }
+
+  .trip-section-heading .itinerary-actions {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .trip-module-nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 .detail-hero {
   padding: 47px 0 30px;
 }

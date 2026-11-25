@@ -23,6 +23,7 @@ def create_app(test_config=None):
         MAX_CONTENT_LENGTH=32 * 1024 * 1024,
         EXPENSE_UPLOAD_FOLDER=os.path.join(app.instance_path, "expense_uploads"),
         TRANSPORT_UPLOAD_FOLDER=os.path.join(app.instance_path, "transport_tickets"),
+        PLACE_PHOTO_UPLOAD_FOLDER=os.path.join(app.instance_path, "place_photos"),
         GOOGLE_MAPS_API_KEY=os.environ.get("GOOGLE_MAPS_API_KEY", ""),
         GOOGLE_MAPS_BROWSER_API_KEY=(
             os.environ.get("GOOGLE_MAPS_BROWSER_API_KEY")
@@ -35,6 +36,7 @@ def create_app(test_config=None):
     init_app(app)
     os.makedirs(app.config["EXPENSE_UPLOAD_FOLDER"], exist_ok=True)
     os.makedirs(app.config["TRANSPORT_UPLOAD_FOLDER"], exist_ok=True)
+    os.makedirs(app.config["PLACE_PHOTO_UPLOAD_FOLDER"], exist_ok=True)
 
     @app.get("/")
     def index():
@@ -73,39 +75,284 @@ def create_app(test_config=None):
         accommodation = query_db(
             "SELECT * FROM accommodations WHERE trip_id = ?", (trip_id,), one=True
         )
-        places = query_db(
-            """SELECT p.*, MIN(d.day_number) AS visit_day FROM places AS p
-               LEFT JOIN itinerary_items AS ii ON ii.place_id = p.id
-               LEFT JOIN itinerary_days AS d ON d.id = ii.day_id
-               WHERE p.trip_id = ? GROUP BY p.id
-               ORDER BY CASE WHEN MIN(d.day_number) IS NULL THEN 1 ELSE 0 END,
-                        MIN(d.day_number), p.name COLLATE NOCASE""",
+        days = query_db(
+            "SELECT id, day_number, date FROM itinerary_days WHERE trip_id = ? ORDER BY day_number",
             (trip_id,),
         )
-        transport_legs = query_db(
-            "SELECT * FROM trip_transport_legs WHERE trip_id = ? ORDER BY departure_at, id",
+        days = [
+            {
+                **dict(day),
+                "place_names": " · ".join(
+                    place["name"] for place in query_db(
+                        """SELECT p.name FROM itinerary_items ii JOIN places p ON p.id = ii.place_id
+                           WHERE ii.day_id = ? ORDER BY ii.sequence""",
+                        (day["id"],),
+                    )
+                ),
+                "place_count": query_db(
+                    "SELECT COUNT(*) AS count FROM itinerary_items WHERE day_id = ?",
+                    (day["id"],), one=True,
+                )["count"],
+            }
+            for day in days
+        ]
+        todos = query_db(
+            "SELECT * FROM trip_todos WHERE trip_id = ? ORDER BY is_done, id DESC",
             (trip_id,),
         )
-        scheduled_rows = query_db(
-            """SELECT ii.place_id, d.day_number FROM itinerary_items AS ii
-               JOIN itinerary_days AS d ON d.id = ii.day_id WHERE d.trip_id = ?""",
-            (trip_id,),
+        expense_summary = query_db(
+            "SELECT COUNT(*) AS count, COALESCE(SUM(amount), 0) AS total FROM trip_expenses WHERE trip_id = ?",
+            (trip_id,), one=True,
         )
-        place_days = {row["place_id"]: row["day_number"] for row in scheduled_rows}
+        place_count = query_db(
+            "SELECT COUNT(*) AS count FROM places WHERE trip_id = ?", (trip_id,), one=True
+        )["count"]
+        transport_count = query_db(
+            "SELECT COUNT(*) AS count FROM trip_transport_legs WHERE trip_id = ?", (trip_id,), one=True
+        )["count"]
+        journal_place_count = query_db(
+            """SELECT COUNT(*) AS count FROM (
+                 SELECT p.id FROM places p LEFT JOIN place_journals j ON j.place_id = p.id
+                 WHERE p.trip_id = ? AND (
+                   TRIM(COALESCE(j.information, '')) <> '' OR TRIM(COALESCE(j.thoughts, '')) <> ''
+                   OR EXISTS (SELECT 1 FROM place_photos ph WHERE ph.place_id = p.id)
+                 )
+               )""", (trip_id,), one=True,
+        )["count"]
+        trip_photo_count = query_db(
+            "SELECT COUNT(*) AS count FROM place_photos WHERE trip_id = ?", (trip_id,), one=True
+        )["count"]
         start = date.fromisoformat(trip["start_date"])
         end = date.fromisoformat(trip["end_date"])
         return render_template(
-            "trip.html", trip=trip, accommodation=accommodation, places=places,
+            "trip.html", trip=trip, accommodation=accommodation, days=days, todos=todos,
+            expense_summary=expense_summary, place_count=place_count, transport_count=transport_count,
+            journal_place_count=journal_place_count, trip_photo_count=trip_photo_count,
             day_count=(end - start).days + 1, night_count=(end - start).days,
-            place_search_results=[], accommodation_search_results=[],
-            place_search_query="", accommodation_search_query="",
-            map_points=_map_points(accommodation, places),
-            map_total=len(places) + (1 if accommodation else 0),
-            place_search_category="attraction",
-            accommodation_edit_open=request.args.get("edit_accommodation") == "1",
-            place_days=place_days,
-            transport_legs=transport_legs,
         )
+
+    @app.get("/trips/<int:trip_id>/transport")
+    def trip_transport(trip_id):
+        trip = query_db("SELECT * FROM trips WHERE id = ?", (trip_id,), one=True)
+        if trip is None:
+            abort(404)
+        legs = query_db(
+            "SELECT * FROM trip_transport_legs WHERE trip_id = ? ORDER BY departure_at, id",
+            (trip_id,),
+        )
+        return render_template("transport.html", trip=trip, transport_legs=legs)
+
+    @app.get("/trips/<int:trip_id>/accommodation")
+    def trip_accommodation(trip_id):
+        trip = query_db("SELECT * FROM trips WHERE id = ?", (trip_id,), one=True)
+        if trip is None:
+            abort(404)
+        accommodation = query_db(
+            "SELECT * FROM accommodations WHERE trip_id = ?", (trip_id,), one=True
+        )
+        return render_template(
+            "accommodation.html", trip=trip, accommodation=accommodation,
+            accommodation_search_results=[], accommodation_search_query="",
+        )
+
+    @app.get("/trips/<int:trip_id>/places")
+    def trip_places(trip_id):
+        trip = query_db("SELECT * FROM trips WHERE id = ?", (trip_id,), one=True)
+        if trip is None:
+            abort(404)
+        places = _trip_places(trip_id)
+        return render_template(
+            "places.html", trip=trip, places=places, place_search_results=[],
+            place_search_query="", place_search_category="attraction",
+        )
+
+    @app.get("/trips/<int:trip_id>/places/<int:place_id>")
+    def place_detail(trip_id, place_id):
+        trip = query_db("SELECT * FROM trips WHERE id = ?", (trip_id,), one=True)
+        place = query_db(
+            """SELECT p.*, d.day_number, d.date AS visit_date FROM places p
+               LEFT JOIN itinerary_items ii ON ii.place_id = p.id
+               LEFT JOIN itinerary_days d ON d.id = ii.day_id
+               WHERE p.id = ? AND p.trip_id = ?""",
+            (place_id, trip_id), one=True,
+        )
+        if trip is None or place is None:
+            abort(404)
+        journal = query_db(
+            "SELECT information, thoughts, updated_at FROM place_journals WHERE place_id = ?",
+            (place_id,), one=True,
+        )
+        photos = query_db(
+            "SELECT * FROM place_photos WHERE place_id = ? ORDER BY id DESC",
+            (place_id,),
+        )
+        expenses = query_db(
+            "SELECT * FROM trip_expenses WHERE trip_id = ? AND place_id = ? ORDER BY expense_date DESC, id DESC",
+            (trip_id, place_id),
+        )
+        return render_template(
+            "place_detail.html", trip=trip, place=place, journal=journal,
+            photos=photos, expenses=expenses,
+            expense_categories=("숙박", "교통", "식비", "관광·티켓", "쇼핑", "기타"),
+            currencies=("EUR", "USD", "KRW", "GBP", "CZK", "HUF", "CHF", "JPY"),
+            budget_currency=trip["budget_currency"],
+            expense_date=place["visit_date"] or date.today().isoformat(),
+        )
+
+    @app.get("/trips/<int:trip_id>/journal")
+    def trip_journal(trip_id):
+        trip = query_db("SELECT * FROM trips WHERE id = ?", (trip_id,), one=True)
+        if trip is None:
+            abort(404)
+        place_rows = query_db(
+            """SELECT p.id, p.name, p.address, p.category, j.information, j.thoughts
+               FROM places p LEFT JOIN place_journals j ON j.place_id = p.id
+               WHERE p.trip_id = ? AND (
+                 TRIM(COALESCE(j.information, '')) <> '' OR TRIM(COALESCE(j.thoughts, '')) <> ''
+                 OR EXISTS (SELECT 1 FROM place_photos ph WHERE ph.place_id = p.id)
+               ) ORDER BY p.name COLLATE NOCASE, p.id""",
+            (trip_id,),
+        )
+        entries = []
+        for row in place_rows:
+            entry = dict(row)
+            entry["photos"] = query_db(
+                "SELECT id, original_file_name, caption FROM place_photos WHERE place_id = ? ORDER BY id DESC",
+                (row["id"],),
+            )
+            entries.append(entry)
+        return render_template("trip_journal.html", trip=trip, entries=entries)
+
+    @app.post("/trips/<int:trip_id>/places/<int:place_id>/journal")
+    def save_place_journal(trip_id, place_id):
+        if query_db("SELECT id FROM places WHERE id = ? AND trip_id = ?", (place_id, trip_id), one=True) is None:
+            abort(404)
+        information = request.form.get("information", "").strip()[:10000]
+        thoughts = request.form.get("thoughts", "").strip()[:10000]
+        get_db().execute(
+            """INSERT INTO place_journals (place_id, trip_id, information, thoughts, updated_at)
+               VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(place_id) DO UPDATE SET
+                information=excluded.information,
+                thoughts=excluded.thoughts,
+                updated_at=CURRENT_TIMESTAMP""",
+            (place_id, trip_id, information, thoughts),
+        )
+        get_db().commit()
+        flash("장소 기록을 저장했습니다.", "success")
+        return redirect(url_for("place_detail", trip_id=trip_id, place_id=place_id))
+
+    @app.post("/trips/<int:trip_id>/places/<int:place_id>/photos")
+    def add_place_photos(trip_id, place_id):
+        if query_db("SELECT id FROM places WHERE id = ? AND trip_id = ?", (place_id, trip_id), one=True) is None:
+            abort(404)
+        uploads = [file for file in request.files.getlist("photos") if file and file.filename]
+        caption = request.form.get("caption", "").strip()[:240]
+        allowed_extensions = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
+        if not uploads:
+            flash("올릴 사진을 선택해 주세요.", "error")
+            return redirect(url_for("place_detail", trip_id=trip_id, place_id=place_id))
+        if len(uploads) > 10:
+            flash("한 번에 사진은 최대 10장까지 올릴 수 있습니다.", "error")
+            return redirect(url_for("place_detail", trip_id=trip_id, place_id=place_id))
+        saved_names = []
+        db = get_db()
+        try:
+            for uploaded in uploads:
+                extension = Path(uploaded.filename).suffix.lower()
+                if extension not in allowed_extensions:
+                    raise ValueError("사진은 JPG, PNG, WEBP, HEIC, HEIF 파일만 올릴 수 있습니다.")
+                safe_name = secure_filename(uploaded.filename)
+                original_name = (
+                    safe_name if Path(safe_name).suffix.lower() == extension
+                    else f"사진{extension}"
+                )
+                stored_name = f"{uuid.uuid4().hex}{extension}"
+                saved_names.append(stored_name)
+                uploaded.save(os.path.join(app.config["PLACE_PHOTO_UPLOAD_FOLDER"], stored_name))
+                db.execute(
+                    """INSERT INTO place_photos
+                       (place_id, trip_id, stored_file_name, original_file_name, caption)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (place_id, trip_id, stored_name, original_name, caption),
+                )
+            db.commit()
+        except (ValueError, sqlite3.Error, OSError) as error:
+            db.rollback()
+            for stored_name in saved_names:
+                file_path = os.path.join(app.config["PLACE_PHOTO_UPLOAD_FOLDER"], stored_name)
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+            message = str(error) if isinstance(error, ValueError) else "사진을 저장하지 못했습니다."
+            flash(message, "error")
+            return redirect(url_for("place_detail", trip_id=trip_id, place_id=place_id))
+        flash(f"사진 {len(saved_names)}장을 추가했습니다.", "success")
+        return redirect(url_for("place_detail", trip_id=trip_id, place_id=place_id))
+
+    @app.get("/trips/<int:trip_id>/places/<int:place_id>/photos/<int:photo_id>")
+    def place_photo(trip_id, place_id, photo_id):
+        photo = query_db(
+            """SELECT stored_file_name FROM place_photos
+               WHERE id = ? AND trip_id = ? AND place_id = ?""",
+            (photo_id, trip_id, place_id), one=True,
+        )
+        if photo is None:
+            abort(404)
+        return send_from_directory(
+            app.config["PLACE_PHOTO_UPLOAD_FOLDER"], photo["stored_file_name"],
+            as_attachment=False,
+        )
+
+    @app.post("/trips/<int:trip_id>/places/<int:place_id>/photos/<int:photo_id>/delete")
+    def delete_place_photo(trip_id, place_id, photo_id):
+        photo = query_db(
+            """SELECT stored_file_name FROM place_photos
+               WHERE id = ? AND trip_id = ? AND place_id = ?""",
+            (photo_id, trip_id, place_id), one=True,
+        )
+        if photo is None:
+            abort(404)
+        get_db().execute("DELETE FROM place_photos WHERE id = ?", (photo_id,))
+        get_db().commit()
+        file_path = os.path.join(app.config["PLACE_PHOTO_UPLOAD_FOLDER"], photo["stored_file_name"])
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+        flash("사진을 삭제했습니다.", "success")
+        return redirect(url_for("place_detail", trip_id=trip_id, place_id=place_id))
+
+    @app.post("/trips/<int:trip_id>/todos")
+    def add_trip_todo(trip_id):
+        if query_db("SELECT id FROM trips WHERE id = ?", (trip_id,), one=True) is None:
+            abort(404)
+        title = request.form.get("title", "").strip()[:180]
+        if not title:
+            flash("할 일을 입력해 주세요.", "error")
+        else:
+            get_db().execute("INSERT INTO trip_todos (trip_id, title) VALUES (?, ?)", (trip_id, title))
+            get_db().commit()
+            flash("할 일을 추가했습니다.", "success")
+        return redirect(url_for("trip_detail", trip_id=trip_id))
+
+    @app.post("/trips/<int:trip_id>/todos/<int:todo_id>/toggle")
+    def toggle_trip_todo(trip_id, todo_id):
+        cursor = get_db().execute(
+            "UPDATE trip_todos SET is_done = 1 - is_done WHERE id = ? AND trip_id = ?",
+            (todo_id, trip_id),
+        )
+        get_db().commit()
+        if cursor.rowcount == 0:
+            abort(404)
+        return redirect(url_for("trip_detail", trip_id=trip_id))
+
+    @app.post("/trips/<int:trip_id>/todos/<int:todo_id>/delete")
+    def delete_trip_todo(trip_id, todo_id):
+        cursor = get_db().execute(
+            "DELETE FROM trip_todos WHERE id = ? AND trip_id = ?", (todo_id, trip_id)
+        )
+        get_db().commit()
+        if cursor.rowcount == 0:
+            abort(404)
+        return redirect(url_for("trip_detail", trip_id=trip_id))
 
     @app.get("/trips/<int:trip_id>/expenses")
     def trip_expenses(trip_id):
@@ -113,7 +360,9 @@ def create_app(test_config=None):
         if trip is None:
             abort(404)
         expenses = query_db(
-            "SELECT * FROM trip_expenses WHERE trip_id = ? ORDER BY expense_date DESC, id DESC",
+            """SELECT e.*, p.name AS place_name FROM trip_expenses e
+               LEFT JOIN places p ON p.id = e.place_id
+               WHERE e.trip_id = ? ORDER BY e.expense_date DESC, e.id DESC""",
             (trip_id,),
         )
         totals = query_db(
@@ -154,9 +403,52 @@ def create_app(test_config=None):
     def add_trip_expense(trip_id):
         if query_db("SELECT id FROM trips WHERE id = ?", (trip_id,), one=True) is None:
             abort(404)
+        place_id_value = request.form.get("place_id", "").strip()
+        place_day = None
+        place_id = None
+        if place_id_value:
+            try:
+                place_id = int(place_id_value)
+            except ValueError:
+                abort(400)
+            requested_day_value = request.form.get("day_number", "").strip()
+            if requested_day_value:
+                try:
+                    requested_day = int(requested_day_value)
+                except ValueError:
+                    abort(400)
+                place_day = query_db(
+                    """SELECT d.day_number, d.date FROM itinerary_items ii
+                       JOIN itinerary_days d ON d.id = ii.day_id
+                       JOIN places p ON p.id = ii.place_id
+                       WHERE p.id = ? AND p.trip_id = ? AND d.day_number = ?""",
+                    (place_id, trip_id, requested_day), one=True,
+                )
+            else:
+                place_day = query_db(
+                    "SELECT id FROM places WHERE id = ? AND trip_id = ?",
+                    (place_id, trip_id), one=True,
+                )
+            if place_day is None:
+                abort(404)
+            place_day = dict(place_day)
+
+        def expense_return():
+            if place_day:
+                if place_day.get("day_number"):
+                    return redirect(url_for(
+                        "itinerary_day_detail", trip_id=trip_id,
+                        day_number=place_day["day_number"],
+                    ))
+                return redirect(url_for("place_detail", trip_id=trip_id, place_id=place_id))
+            return redirect(url_for("trip_expenses", trip_id=trip_id))
+
         title = request.form.get("title", "").strip()
         category = request.form.get("category", "기타")
-        expense_date = request.form.get("expense_date", "")
+        expense_date = (
+            place_day["date"] if place_day and place_day.get("date")
+            else request.form.get("expense_date", "")
+        )
         currency = request.form.get("currency", "EUR").upper()
         note = request.form.get("note", "").strip()
         allowed_currencies = {"EUR", "USD", "KRW", "GBP", "CZK", "HUF", "CHF", "JPY"}
@@ -166,10 +458,10 @@ def create_app(test_config=None):
             date.fromisoformat(expense_date)
         except (ValueError, TypeError):
             flash("날짜와 금액을 올바르게 입력해 주세요.", "error")
-            return redirect(url_for("trip_expenses", trip_id=trip_id))
+            return expense_return()
         if not title or not math.isfinite(amount) or amount < 0 or category not in allowed_categories or currency not in allowed_currencies:
             flash("지출 정보를 확인해 주세요.", "error")
-            return redirect(url_for("trip_expenses", trip_id=trip_id))
+            return expense_return()
         uploaded = request.files.get("attachment")
         original_name = None
         stored_name = None
@@ -177,7 +469,7 @@ def create_app(test_config=None):
             extension = Path(uploaded.filename).suffix.lower()
             if extension not in {".jpg", ".jpeg", ".png", ".webp", ".pdf", ".heic", ".heif"}:
                 flash("영수증 또는 티켓은 JPG, PNG, WEBP, HEIC, HEIF, PDF 파일로 첨부해 주세요.", "error")
-                return redirect(url_for("trip_expenses", trip_id=trip_id))
+                return expense_return()
             safe_name = secure_filename(uploaded.filename)
             original_name = (
                 safe_name if Path(safe_name).suffix.lower() == extension
@@ -189,9 +481,9 @@ def create_app(test_config=None):
             db = get_db()
             db.execute(
                 """INSERT INTO trip_expenses
-                   (trip_id, title, category, expense_date, amount, currency, note, original_file_name, stored_file_name)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (trip_id, title, category, expense_date, amount, currency, note, original_name, stored_name),
+                   (trip_id, place_id, title, category, expense_date, amount, currency, note, original_file_name, stored_file_name)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (trip_id, place_id, title, category, expense_date, amount, currency, note, original_name, stored_name),
             )
             db.commit()
         except sqlite3.Error:
@@ -199,9 +491,9 @@ def create_app(test_config=None):
             if stored_name:
                 os.remove(os.path.join(app.config["EXPENSE_UPLOAD_FOLDER"], stored_name))
             flash("지출 내역을 저장하지 못했습니다.", "error")
-            return redirect(url_for("trip_expenses", trip_id=trip_id))
+            return expense_return()
         flash("지출 내역을 저장했습니다.", "success")
-        return redirect(url_for("trip_expenses", trip_id=trip_id))
+        return expense_return()
 
     @app.get("/trips/<int:trip_id>/expenses/<int:expense_id>/attachment")
     def trip_expense_attachment(trip_id, expense_id):
@@ -219,7 +511,10 @@ def create_app(test_config=None):
     @app.post("/trips/<int:trip_id>/expenses/<int:expense_id>/delete")
     def delete_trip_expense(trip_id, expense_id):
         expense = query_db(
-            "SELECT stored_file_name FROM trip_expenses WHERE id = ? AND trip_id = ?",
+            """SELECT e.stored_file_name, e.place_id, d.day_number FROM trip_expenses e
+               LEFT JOIN itinerary_items ii ON ii.place_id = e.place_id
+               LEFT JOIN itinerary_days d ON d.id = ii.day_id
+               WHERE e.id = ? AND e.trip_id = ? LIMIT 1""",
             (expense_id, trip_id), one=True,
         )
         if expense is None:
@@ -232,6 +527,21 @@ def create_app(test_config=None):
             if os.path.isfile(file_path):
                 os.remove(file_path)
         flash("지출 내역을 삭제했습니다.", "success")
+        if request.form.get("return_to_expenses") == "1":
+            return redirect(url_for("trip_expenses", trip_id=trip_id))
+        if request.form.get("return_to_place") == "1" and expense["place_id"]:
+            return redirect(url_for(
+                "place_detail", trip_id=trip_id, place_id=expense["place_id"]
+            ))
+        if expense["day_number"]:
+            return redirect(url_for(
+                "itinerary_day_detail", trip_id=trip_id,
+                day_number=expense["day_number"],
+            ))
+        if expense["place_id"]:
+            return redirect(url_for(
+                "place_detail", trip_id=trip_id, place_id=expense["place_id"]
+            ))
         return redirect(url_for("trip_expenses", trip_id=trip_id))
 
     @app.get("/trips/<int:trip_id>/itinerary")
@@ -304,7 +614,7 @@ def create_app(test_config=None):
         )
         if not places:
             flash("먼저 가고 싶은 장소를 등록해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
+            return redirect(url_for("trip_places", trip_id=trip_id))
         accommodation = query_db(
             "SELECT * FROM accommodations WHERE trip_id = ?", (trip_id,), one=True
         )
@@ -341,7 +651,7 @@ def create_app(test_config=None):
         except sqlite3.Error:
             db.rollback()
             flash("일정을 저장하지 못했습니다. 다시 시도해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
+            return redirect(url_for("trip_itinerary", trip_id=trip_id))
         if not any(day.get("is_available", True) for day in days):
             flash("교통편 여유 시간을 고려해 모든 날짜를 비워 두었습니다. 장소는 날짜 미정으로 남았습니다.", "success")
         else:
@@ -403,6 +713,16 @@ def create_app(test_config=None):
                WHERE ii.day_id = ? ORDER BY ii.sequence""",
             (day["id"],),
         )
+        place_expenses = query_db(
+            """SELECT e.* FROM trip_expenses e
+               JOIN itinerary_items ii ON ii.place_id = e.place_id
+               WHERE e.trip_id = ? AND ii.day_id = ?
+               ORDER BY e.expense_date, e.id""",
+            (trip_id, day["id"]),
+        )
+        expenses_by_place = {}
+        for expense in place_expenses:
+            expenses_by_place.setdefault(expense["place_id"], []).append(expense)
         accommodation = query_db(
             "SELECT * FROM accommodations WHERE trip_id = ?", (trip_id,), one=True
         )
@@ -422,6 +742,10 @@ def create_app(test_config=None):
         return render_template(
             "day_detail.html", trip=trip, day=day, day_number=day_number,
             items=items, accommodation=accommodation, accommodation_status=accommodation_status,
+            expenses_by_place=expenses_by_place,
+            expense_categories=("숙박", "교통", "식비", "관광·티켓", "쇼핑", "기타"),
+            currencies=("EUR", "USD", "KRW", "GBP", "CZK", "HUF", "CHF", "JPY"),
+            budget_currency=trip["budget_currency"],
             day_availability=availability,
             map_points=_map_points(map_accommodation, items, place_days, place_sequences),
             map_total=len(items) + (1 if map_accommodation and map_accommodation["latitude"] is not None else 0),
@@ -516,41 +840,17 @@ def create_app(test_config=None):
                     flash("검색 결과가 없습니다. 다른 검색어를 입력해 주세요.", "error")
             except PlaceSearchError as error:
                 flash(str(error), "error")
-        accommodation = query_db(
-            "SELECT * FROM accommodations WHERE trip_id = ?", (trip_id,), one=True
-        )
-        places = query_db(
-            """SELECT p.*, MIN(d.day_number) AS visit_day FROM places AS p
-               LEFT JOIN itinerary_items AS ii ON ii.place_id = p.id
-               LEFT JOIN itinerary_days AS d ON d.id = ii.day_id
-               WHERE p.trip_id = ? GROUP BY p.id
-               ORDER BY CASE WHEN MIN(d.day_number) IS NULL THEN 1 ELSE 0 END,
-                        MIN(d.day_number), p.name COLLATE NOCASE""",
-            (trip_id,),
-        )
-        transport_legs = query_db(
-            "SELECT * FROM trip_transport_legs WHERE trip_id = ? ORDER BY departure_at, id",
-            (trip_id,),
-        )
-        start = date.fromisoformat(trip["start_date"])
-        end = date.fromisoformat(trip["end_date"])
+        if target == "accommodation":
+            return render_template(
+                "accommodation.html", trip=trip,
+                accommodation=query_db("SELECT * FROM accommodations WHERE trip_id = ?", (trip_id,), one=True),
+                accommodation_search_results=accommodation_results,
+                accommodation_search_query=query,
+            )
         return render_template(
-            "trip.html", trip=trip, accommodation=accommodation, places=places,
-            day_count=(end - start).days + 1, night_count=(end - start).days,
-            place_search_results=place_results,
-            accommodation_search_results=accommodation_results,
-            place_search_query=query if target != "accommodation" else "",
-            accommodation_search_query=query if target == "accommodation" else "",
-            map_points=_map_points(accommodation, places),
-            map_total=len(places) + (1 if accommodation else 0),
+            "places.html", trip=trip, places=_trip_places(trip_id),
+            place_search_results=place_results, place_search_query=query,
             place_search_category=category,
-            accommodation_edit_open=(target == "accommodation"),
-            place_days={row["place_id"]: row["day_number"] for row in query_db(
-                """SELECT ii.place_id, d.day_number FROM itinerary_items ii
-                   JOIN itinerary_days d ON d.id = ii.day_id WHERE d.trip_id = ?""",
-                (trip_id,),
-            )},
-            transport_legs=transport_legs,
         )
 
     @app.post("/trips")
@@ -583,11 +883,18 @@ def create_app(test_config=None):
 
     @app.post("/trips/<int:trip_id>/delete")
     def delete_trip(trip_id):
+        photos = query_db(
+            "SELECT stored_file_name FROM place_photos WHERE trip_id = ?", (trip_id,)
+        )
         connection = get_db()
         cursor = connection.execute("DELETE FROM trips WHERE id = ?", (trip_id,))
         connection.commit()
         if cursor.rowcount == 0:
             abort(404)
+        for photo in photos:
+            file_path = os.path.join(app.config["PLACE_PHOTO_UPLOAD_FOLDER"], photo["stored_file_name"])
+            if os.path.isfile(file_path):
+                os.remove(file_path)
         flash("여행을 삭제했습니다.", "success")
         return redirect(url_for("index"))
 
@@ -712,7 +1019,7 @@ def create_app(test_config=None):
         check_out_date = request.form.get("check_out_date", "")
         if not name or not address:
             flash("숙소 이름과 주소를 입력해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id, edit_accommodation=1))
+            return redirect(url_for("trip_accommodation", trip_id=trip_id))
         try:
             check_in = date.fromisoformat(check_in_date)
             check_out = date.fromisoformat(check_out_date)
@@ -720,14 +1027,14 @@ def create_app(test_config=None):
             trip_end = date.fromisoformat(trip["end_date"])
         except ValueError:
             flash("숙소 체크인과 체크아웃 날짜를 입력해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id, edit_accommodation=1))
+            return redirect(url_for("trip_accommodation", trip_id=trip_id))
         if check_in < trip_start or check_out > trip_end or check_out <= check_in:
             flash("숙소 날짜는 여행 기간 안에서 체크아웃이 체크인보다 뒤가 되도록 선택해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id, edit_accommodation=1))
+            return redirect(url_for("trip_accommodation", trip_id=trip_id))
         coordinates = _parse_coordinates(latitude, longitude)
         if coordinates is None and (latitude or longitude):
             flash("위도와 경도를 올바르게 함께 입력해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
+            return redirect(url_for("trip_accommodation", trip_id=trip_id))
         db = get_db()
         existing = db.execute(
             "SELECT id FROM accommodations WHERE trip_id = ?", (trip_id,)
@@ -746,7 +1053,7 @@ def create_app(test_config=None):
             )
         db.commit()
         flash("숙소 정보를 저장했습니다.", "success")
-        return redirect(url_for("trip_detail", trip_id=trip_id))
+        return redirect(url_for("trip_accommodation", trip_id=trip_id))
 
     @app.post("/trips/<int:trip_id>/transport")
     def add_transport_leg(trip_id):
@@ -763,7 +1070,7 @@ def create_app(test_config=None):
         arrival_value = request.form.get("arrival_at", "")
         if mode not in {"flight", "train"} or leg_type not in {"arrival", "departure"}:
             flash("교통수단과 도착·출발 유형을 선택해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
+            return redirect(url_for("trip_transport", trip_id=trip_id))
         try:
             departure_at = datetime.fromisoformat(departure_value)
             arrival_at = datetime.fromisoformat(arrival_value)
@@ -771,14 +1078,14 @@ def create_app(test_config=None):
             trip_end = date.fromisoformat(trip["end_date"])
         except ValueError:
             flash("출발·도착 날짜와 시간을 입력해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
+            return redirect(url_for("trip_transport", trip_id=trip_id))
         event_date = arrival_at.date() if leg_type == "arrival" else departure_at.date()
         if not origin or not destination:
             flash("출발지와 도착지를 입력해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
+            return redirect(url_for("trip_transport", trip_id=trip_id))
         if not trip_start <= event_date <= trip_end:
             flash("도착편은 도착일, 출발편은 출발일이 여행 기간 안에 있어야 합니다.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
+            return redirect(url_for("trip_transport", trip_id=trip_id))
 
         uploaded = request.files.get("ticket")
         original_name = None
@@ -787,7 +1094,7 @@ def create_app(test_config=None):
             extension = Path(uploaded.filename).suffix.lower()
             if extension not in {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".pdf"}:
                 flash("티켓은 JPG, PNG, WEBP, HEIC, HEIF, PDF 파일로 첨부해 주세요.", "error")
-                return redirect(url_for("trip_detail", trip_id=trip_id))
+                return redirect(url_for("trip_transport", trip_id=trip_id))
             safe_name = secure_filename(uploaded.filename)
             original_name = safe_name if Path(safe_name).suffix.lower() == extension else f"티켓{extension}"
             stored_name = f"{uuid.uuid4().hex}{extension}"
@@ -809,9 +1116,9 @@ def create_app(test_config=None):
             if stored_name:
                 os.remove(os.path.join(app.config["TRANSPORT_UPLOAD_FOLDER"], stored_name))
             flash("교통편을 저장하지 못했습니다.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
+            return redirect(url_for("trip_transport", trip_id=trip_id))
         flash("항공·기차 정보를 저장했습니다. 다음에 일정을 다시 추천할 때 반영됩니다.", "success")
-        return redirect(url_for("trip_detail", trip_id=trip_id))
+        return redirect(url_for("trip_transport", trip_id=trip_id))
 
     @app.get("/trips/<int:trip_id>/transport/<int:leg_id>/ticket")
     def transport_ticket(trip_id, leg_id):
@@ -842,7 +1149,7 @@ def create_app(test_config=None):
             if os.path.isfile(file_path):
                 os.remove(file_path)
         flash("교통편을 삭제했습니다.", "success")
-        return redirect(url_for("trip_detail", trip_id=trip_id))
+        return redirect(url_for("trip_transport", trip_id=trip_id))
 
     @app.post("/trips/<int:trip_id>/places")
     def add_place(trip_id):
@@ -856,14 +1163,14 @@ def create_app(test_config=None):
         longitude = request.form.get("longitude", "").strip()
         if not name:
             flash("장소 이름을 입력해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
+            return redirect(url_for("trip_places", trip_id=trip_id))
         if category not in ("attraction", "restaurant"):
             flash("장소 유형을 선택해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
+            return redirect(url_for("trip_places", trip_id=trip_id))
         coordinates = _parse_coordinates(latitude, longitude)
         if coordinates is None and (latitude or longitude):
             flash("위도와 경도를 올바르게 함께 입력해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
+            return redirect(url_for("trip_places", trip_id=trip_id))
         duplicate = query_db(
             """SELECT id FROM places WHERE trip_id = ? AND (
                  (? IS NOT NULL AND provider_place_id = ?) OR
@@ -880,11 +1187,11 @@ def create_app(test_config=None):
                     )
                     get_db().commit()
                     flash("이미 등록된 장소의 지도 위치를 갱신했습니다.", "success")
-                    return redirect(url_for("trip_detail", trip_id=trip_id))
+                    return redirect(url_for("trip_places", trip_id=trip_id))
                 except sqlite3.IntegrityError:
                     get_db().rollback()
             flash("이미 등록된 장소입니다.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
+            return redirect(url_for("trip_places", trip_id=trip_id))
         try:
             get_db().execute(
                 """INSERT INTO places
@@ -899,9 +1206,9 @@ def create_app(test_config=None):
         except sqlite3.IntegrityError:
             get_db().rollback()
             flash("장소를 저장하지 못했습니다. 중복 여부를 확인해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
+            return redirect(url_for("trip_places", trip_id=trip_id))
         flash(f"‘{name}’ 장소를 추가했습니다.", "success")
-        return redirect(url_for("trip_detail", trip_id=trip_id))
+        return redirect(url_for("trip_places", trip_id=trip_id))
 
     @app.post("/trips/<int:trip_id>/itinerary/add")
     @app.post("/trips/<int:trip_id>/itinerary/day/<int:day_number>/add")
@@ -950,14 +1257,22 @@ def create_app(test_config=None):
 
     @app.post("/trips/<int:trip_id>/places/<int:place_id>/delete")
     def delete_place(trip_id, place_id):
+        photos = query_db(
+            "SELECT stored_file_name FROM place_photos WHERE place_id = ? AND trip_id = ?",
+            (place_id, trip_id),
+        )
         cursor = get_db().execute(
             "DELETE FROM places WHERE id = ? AND trip_id = ?", (place_id, trip_id)
         )
         get_db().commit()
         if cursor.rowcount == 0:
             abort(404)
+        for photo in photos:
+            file_path = os.path.join(app.config["PLACE_PHOTO_UPLOAD_FOLDER"], photo["stored_file_name"])
+            if os.path.isfile(file_path):
+                os.remove(file_path)
         flash("장소를 삭제했습니다.", "success")
-        return redirect(url_for("trip_detail", trip_id=trip_id))
+        return redirect(url_for("trip_places", trip_id=trip_id))
 
     @app.post("/trips/<int:trip_id>/itinerary/places/<int:place_id>/delete")
     def remove_itinerary_place(trip_id, place_id):
@@ -1039,7 +1354,7 @@ def create_app(test_config=None):
         if cursor.rowcount == 0:
             abort(404)
         flash("숙소를 삭제했습니다.", "success")
-        return redirect(url_for("trip_detail", trip_id=trip_id))
+        return redirect(url_for("trip_accommodation", trip_id=trip_id))
 
     @app.post("/trips/<int:trip_id>/itinerary/reorder")
     def reorder_trip_itinerary(trip_id):
@@ -1125,6 +1440,18 @@ def _itinerary_day_redirect(trip_id, day_number, return_to_day):
 
 def _utc_now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _trip_places(trip_id):
+    return query_db(
+        """SELECT p.*, MIN(d.day_number) AS visit_day FROM places p
+           LEFT JOIN itinerary_items ii ON ii.place_id = p.id
+           LEFT JOIN itinerary_days d ON d.id = ii.day_id
+           WHERE p.trip_id = ? GROUP BY p.id
+           ORDER BY CASE WHEN MIN(d.day_number) IS NULL THEN 1 ELSE 0 END,
+                    MIN(d.day_number), p.name COLLATE NOCASE""",
+        (trip_id,),
+    )
 
 
 def _accommodation_status(accommodation, day_date):

@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS trip_recommendation_settings (
 CREATE TABLE IF NOT EXISTS trip_expenses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    place_id INTEGER REFERENCES places(id) ON DELETE SET NULL,
     title TEXT NOT NULL,
     category TEXT NOT NULL DEFAULT '기타',
     expense_date TEXT NOT NULL,
@@ -102,3 +103,31 @@ CREATE TABLE IF NOT EXISTS trip_expenses (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_trip_expenses_trip_date ON trip_expenses(trip_id, expense_date, id);
+
+CREATE TABLE IF NOT EXISTS trip_todos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    is_done INTEGER NOT NULL DEFAULT 0 CHECK (is_done IN (0, 1)),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_trip_todos_trip ON trip_todos(trip_id, is_done, id);
+
+CREATE TABLE IF NOT EXISTS place_journals (
+    place_id INTEGER PRIMARY KEY REFERENCES places(id) ON DELETE CASCADE,
+    trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    information TEXT NOT NULL DEFAULT '',
+    thoughts TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS place_photos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    place_id INTEGER NOT NULL REFERENCES places(id) ON DELETE CASCADE,
+    trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    stored_file_name TEXT NOT NULL UNIQUE,
+    original_file_name TEXT NOT NULL,
+    caption TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_place_photos_place ON place_photos(place_id, id);

@@ -7,3 +7,4 @@ instance/*.db
 instance/*.sqlite3
 instance/expense_uploads/
 instance/transport_tickets/
+instance/place_photos/

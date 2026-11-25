@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>가고 싶은 장소 · {{ trip.title }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='css/trip.css') }}">
+</head>
+<body><main class="shell trip-module-page">
+  <header class="topbar"><a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">✳</span> roam<span class="brand-light">/</span>plan</a><a class="back-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">← {{ trip.title }} 개요</a></header>
+  {% set active_page = 'places' %}
+  <section class="trip-section-heading"><div class="trip-section-heading-copy"><p class="trip-section-kicker">{{ trip.city }}</p><h1>가고 싶은 장소</h1><p>관광지와 식당을 검색해서 여행 목록에 추가합니다.</p></div></section>
+  {% include '_trip_nav.html' %}
+  {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="notices">{% for category, message in messages %}<p class="notice {{ category }}">{{ message }}</p>{% endfor %}</div>{% endif %}{% endwith %}
+  <section class="places-module-layout">
+    <article class="panel module-content"><div class="panel-heading"><div><h2>장소 검색 및 추가</h2></div></div>
+      <p class="form-hint">검색 결과를 선택하면 이름과 주소가 입력됩니다. 저장 전에 수정할 수 있습니다.</p>
+      <div class="place-category-switch" role="group" aria-label="장소 유형"><button type="button" class="category-option {{ 'active' if place_search_category == 'attraction' else '' }}" data-category="attraction">관광지</button><button type="button" class="category-option {{ 'active' if place_search_category == 'restaurant' else '' }}" data-category="restaurant">식당</button></div>
+      <form method="post" action="{{ url_for('search_trip_places', trip_id=trip.id) }}" class="search-form"><input type="hidden" name="target" value="places"><input id="search-category" type="hidden" name="category" value="{{ place_search_category }}"><label><span id="place-search-label">{{ '식당 검색' if place_search_category == 'restaurant' else '관광지 검색' }}</span><input name="query" value="{{ place_search_query }}" placeholder="장소 이름이나 종류" required></label><button class="secondary-button" type="submit">검색</button></form>
+      {% if place_search_results %}<div class="search-results"><p class="results-caption">검색 결과 · 선택해서 장소 정보를 입력하세요</p>{% for result in place_search_results %}<div class="search-result"><div><strong>{{ result.label }}</strong><span>{{ result.formatted_address }}</span></div><button type="button" class="select-location" data-category="{{ place_search_category }}" data-place-id="{{ result.provider_place_id }}" data-name="{{ result.label }}" data-address="{{ result.formatted_address }}" data-lat="{{ result.latitude }}" data-lng="{{ result.longitude }}">선택</button><a class="maps-attribution" href="https://www.google.com/maps/search/?api=1&query={{ result.label|urlencode }}&query_place_id={{ result.provider_place_id|urlencode }}" target="_blank" rel="noopener">지도에서 보기</a></div>{% endfor %}</div>{% endif %}
+      <form id="place-form" method="post" action="{{ url_for('add_place', trip_id=trip.id) }}" class="trip-form"><input type="hidden" name="provider_place_id" value=""><input id="place-form-category" type="hidden" name="category" value="{{ place_search_category }}"><input type="hidden" name="latitude" value=""><input type="hidden" name="longitude" value=""><label>장소 이름<input name="name" maxlength="180" placeholder="검색 결과를 선택해 주세요" disabled required></label><label>주소<input name="address" maxlength="300" placeholder="검색 결과를 선택하면 주소가 입력됩니다" disabled></label><button class="primary-button" type="submit" disabled>장소 추가 <span>↗</span></button></form>
+    </article>
+    <article class="panel module-content registered-places-panel"><div class="panel-heading"><div><h2>등록한 장소 <span class="place-count">{{ places|length }}</span></h2></div></div>
+      {% if places %}<div class="place-list">{% for place in places %}<div class="place-row"><span class="place-pin category-pin {{ 'restaurant-pin' if place.category == 'restaurant' else 'attraction-pin' }}">{{ '식' if place.category == 'restaurant' else '관' }}</span><div class="place-info"><h3><a class="place-detail-link" href="{{ url_for('place_detail', trip_id=trip.id, place_id=place.id) }}">{{ place.name }}</a> <small class="visit-day">{{ 'Day' ~ place.visit_day if place.visit_day else '일정 미정' }}</small></h3><p>{{ place.address or '주소 미입력' }}</p></div><form method="post" action="{{ url_for('delete_place', trip_id=trip.id, place_id=place.id) }}" onsubmit="return confirm('이 장소를 삭제할까요?');"><button class="icon-button" type="submit" aria-label="장소 삭제">×</button></form></div>{% endfor %}</div>{% else %}<div class="overview-empty"><p>아직 장소가 등록되지 않았습니다.</p></div>{% endif %}
+    </article>
+  </section><footer>MADE FOR THE JOURNEY <span>✳</span></footer>
+</main>
+<script>
+document.querySelectorAll('.category-option').forEach((button)=>button.addEventListener('click',()=>{document.querySelectorAll('.category-option').forEach((option)=>option.classList.remove('active'));button.classList.add('active');const category=button.dataset.category;document.getElementById('search-category').value=category;document.getElementById('place-form-category').value=category;document.getElementById('place-search-label').textContent=category==='restaurant'?'식당 검색':'관광지 검색';}));
+document.querySelectorAll('.select-location').forEach((button)=>button.addEventListener('click',()=>{const form=document.getElementById('place-form');form.elements.latitude.value=button.dataset.lat;form.elements.longitude.value=button.dataset.lng;form.elements.provider_place_id.value=button.dataset.placeId;form.elements.category.value=button.dataset.category;form.elements.name.value=button.dataset.name;form.elements.address.value=button.dataset.address;form.querySelectorAll('input:not([type="hidden"]),button[type="submit"]').forEach((field)=>field.disabled=false);form.scrollIntoView({behavior:'smooth',block:'center'});form.elements.name.focus();}));
+</script></body></html>

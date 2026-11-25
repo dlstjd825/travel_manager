@@ -8,11 +8,13 @@
 </head>
 <body>
   <main class="shell">
-    <header class="topbar"><a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">✳</span> roam<span class="brand-light">/</span>plan</a><div class="topbar-links"><a class="back-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">← 장소 등록</a><a class="back-link" href="{{ url_for('trip_expenses', trip_id=trip.id) }}">예산·영수증</a></div></header>
-    <section class="itinerary-hero">
-      <div><h1>{{ trip.title }}</h1><p class="intro">{{ trip.start_date }} — {{ trip.end_date }} · {{ night_count }}박 {{ day_count }}일</p></div>
+    <header class="topbar"><a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">✳</span> roam<span class="brand-light">/</span>plan</a><a class="back-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">← 여행 개요</a></header>
+    {% set active_page = 'itinerary' %}
+    <section class="trip-section-heading trip-section-heading-with-actions">
+      <div class="trip-section-heading-copy"><p class="trip-section-kicker">{{ trip.city }}</p><h1>일정 관리</h1><p>{{ trip.title }} · {{ trip.start_date }} — {{ trip.end_date }} · {{ night_count }}박 {{ day_count }}일</p></div>
       <div class="itinerary-actions"><span id="itinerary-save-status" role="status">장소와 날짜를 드래그해 순서를 바꿀 수 있어요.</span>{% if not accommodation %}<a class="secondary-button itinerary-accommodation-link" href="{{ url_for('trip_detail', trip_id=trip.id, edit_accommodation=1) }}#stay-panel">숙소 추가</a>{% endif %}<form method="post" action="{{ url_for('recommend_trip_itinerary', trip_id=trip.id) }}"><button class="primary-button" type="submit">일정 다시 추천 <span>↻</span></button></form></div>
     </section>
+    {% include '_trip_nav.html' %}
     <details class="recommendation-settings">
       <summary>일정 추천 시간 설정</summary>
       <form method="post" action="{{ url_for('save_recommendation_settings', trip_id=trip.id) }}">
@@ -33,14 +35,14 @@
     <div class="itinerary-layout">
       <div class="itinerary-schedule-column">
       {% if has_itinerary %}
-      {% if unscheduled_places %}<article class="day-card unscheduled-card"><header class="day-header"><div class="day-badge unscheduled-badge">미정</div><div class="day-heading"><h2>날짜 미정 장소</h2><p>{{ unscheduled_places|length }}곳 · 방문 날짜를 선택해 추가하세요</p></div></header><ol class="itinerary-stops unscheduled-stops">{% for place in unscheduled_places %}<li class="unscheduled-place-row"><span class="place-pin category-pin {{ 'restaurant-pin' if place.category == 'restaurant' else 'attraction-pin' }}" role="img" aria-label="{{ '식당' if place.category == 'restaurant' else '관광지' }}">{% if place.category == 'restaurant' %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v7m-3-7v4a3 3 0 0 0 6 0V3M6 10v11m10-18v18m0-18c3 2 4 5 4 8h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{% else %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-8h6v8M3 9h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{% endif %}</span><div class="stop-details"><h3>{{ place.name }}</h3><p>{{ place.address or '주소 미입력' }}</p></div><form class="unscheduled-add-form" method="post" action="{{ url_for('add_itinerary_place', trip_id=trip.id) }}"><input type="hidden" name="place_id" value="{{ place.id }}"><select name="day_number" aria-label="{{ place.name }} 방문 날짜" required>{% for date_day in days %}<option value="{{ date_day.day_number }}">Day {{ date_day.day_number }}</option>{% endfor %}</select><button class="primary-button" type="submit">추가</button></form></li>{% endfor %}</ol></article>{% endif %}
+      {% if unscheduled_places %}<article class="day-card unscheduled-card"><header class="day-header"><div class="day-badge unscheduled-badge">미정</div><div class="day-heading"><h2>날짜 미정 장소</h2><p>{{ unscheduled_places|length }}곳 · 방문 날짜를 선택해 추가하세요</p></div></header><ol class="itinerary-stops unscheduled-stops">{% for place in unscheduled_places %}<li class="unscheduled-place-row"><span class="place-pin category-pin {{ 'restaurant-pin' if place.category == 'restaurant' else 'attraction-pin' }}" role="img" aria-label="{{ '식당' if place.category == 'restaurant' else '관광지' }}">{% if place.category == 'restaurant' %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v7m-3-7v4a3 3 0 0 0 6 0V3M6 10v11m10-18v18m0-18c3 2 4 5 4 8h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{% else %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-8h6v8M3 9h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{% endif %}</span><div class="stop-details"><h3><a class="place-detail-link" href="{{ url_for('place_detail', trip_id=trip.id, place_id=place.id) }}">{{ place.name }}</a></h3><p>{{ place.address or '주소 미입력' }}</p></div><form class="unscheduled-add-form" method="post" action="{{ url_for('add_itinerary_place', trip_id=trip.id) }}"><input type="hidden" name="place_id" value="{{ place.id }}"><select name="day_number" aria-label="{{ place.name }} 방문 날짜" required>{% for date_day in days %}<option value="{{ date_day.day_number }}">Day {{ date_day.day_number }}</option>{% endfor %}</select><button class="primary-button" type="submit">추가</button></form></li>{% endfor %}</ol></article>{% endif %}
       <section class="day-list">
       {% for day in days %}
       <article class="day-card" data-day-card>
         <header class="day-header"><div class="day-badge">DAY <strong>{{ '%02d'|format(day.day_number) }}</strong></div><div class="day-heading"><h2>{{ day.date }}</h2><p>{% if day['items'] %}{{ day['items']|length }}곳 방문{% else %}일정 여유일{% endif %}{% if day.accommodation_status %}<span class="day-stay-status"> · 숙소 {{ day.accommodation_status }}</span>{% endif %}</p>{% if day.blocked_reason %}<small class="day-availability-note is-blocked">{{ day.blocked_reason }}</small>{% elif day.availability_note %}<small class="day-availability-note">{{ day.availability_note }}</small>{% endif %}</div><a class="secondary-button day-detail-link" href="{{ url_for('itinerary_day_detail', trip_id=trip.id, day_number=day.day_number) }}">세부 일정 세우기</a><button type="button" class="day-drag-handle" draggable="true" aria-label="날짜 순서 이동" title="날짜 순서 이동">⠿</button></header>
         <div class="day-dropzone" data-day-number="{{ day.day_number }}" data-date="{{ day.date }}" data-detail-url="{{ url_for('itinerary_day_detail', trip_id=trip.id, day_number=day.day_number) }}">
           <ol class="itinerary-stops">{% for item in day['items'] %}
-            <li class="itinerary-stop {{ 'is-locked' if item.is_locked else '' }}" draggable="{{ 'false' if item.is_locked else 'true' }}" data-place-id="{{ item.place_id }}" tabindex="0" role="button" aria-label="{{ item.name }} 지도에서 보기"><span class="drag-handle" aria-hidden="true">⠿</span><span class="place-pin category-pin {{ 'restaurant-pin' if item.category == 'restaurant' else 'attraction-pin' }}" role="img" aria-label="{{ '식당' if item.category == 'restaurant' else '관광지' }}">{% if item.category == 'restaurant' %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v7m-3-7v4a3 3 0 0 0 6 0V3M6 10v11m10-18v18m0-18c3 2 4 5 4 8h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{% else %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-8h6v8M3 9h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{% endif %}</span><div class="stop-details"><h3>{{ item.name }}</h3><p>{{ item.address or '주소 미입력' }}</p>{% if item.latitude is none %}<small class="location-warning">좌표 없음 · 장소 등록 화면에서 위치를 선택해 주세요</small>{% endif %}</div><form method="post" action="{{ url_for('toggle_itinerary_place_lock', trip_id=trip.id, place_id=item.place_id) }}" class="itinerary-row-action itinerary-lock-form"><button type="submit" class="itinerary-lock-button {{ 'locked' if item.is_locked else '' }}" aria-label="{{ item.name }} {{ '고정 해제' if item.is_locked else '순서 고정' }}" title="{{ '고정 해제' if item.is_locked else '순서 고정' }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="{% if item.is_locked %}M7 10V7a5 5 0 0 1 10 0v3{% else %}M8 10V7a5 5 0 0 1 9.6-1.5{% endif %}M6 10h12v11H6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></form><form method="post" action="{{ url_for('remove_itinerary_place', trip_id=trip.id, place_id=item.place_id) }}" class="itinerary-row-action itinerary-delete-form" onsubmit="return confirm('{{ item.name }}을(를) 일정에서 제외할까요?');"><button type="submit" class="icon-button" aria-label="{{ item.name }} 일정에서 제거" title="일정에서 제거">×</button></form></li>
+            <li class="itinerary-stop {{ 'is-locked' if item.is_locked else '' }}" draggable="{{ 'false' if item.is_locked else 'true' }}" data-place-id="{{ item.place_id }}"><span class="drag-handle" aria-hidden="true">⠿</span><span class="place-pin category-pin {{ 'restaurant-pin' if item.category == 'restaurant' else 'attraction-pin' }}" role="img" aria-label="{{ '식당' if item.category == 'restaurant' else '관광지' }}">{% if item.category == 'restaurant' %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v7m-3-7v4a3 3 0 0 0 6 0V3M6 10v11m10-18v18m0-18c3 2 4 5 4 8h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{% else %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-8h6v8M3 9h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{% endif %}</span><div class="stop-details"><h3><a class="place-detail-link" href="{{ url_for('place_detail', trip_id=trip.id, place_id=item.place_id) }}">{{ item.name }}</a></h3><p>{{ item.address or '주소 미입력' }}</p>{% if item.latitude is none %}<small class="location-warning">좌표 없음 · 장소 등록 화면에서 위치를 선택해 주세요</small>{% endif %}</div><form method="post" action="{{ url_for('toggle_itinerary_place_lock', trip_id=trip.id, place_id=item.place_id) }}" class="itinerary-row-action itinerary-lock-form"><button type="submit" class="itinerary-lock-button {{ 'locked' if item.is_locked else '' }}" aria-label="{{ item.name }} {{ '고정 해제' if item.is_locked else '순서 고정' }}" title="{{ '고정 해제' if item.is_locked else '순서 고정' }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="{% if item.is_locked %}M7 10V7a5 5 0 0 1 10 0v3{% else %}M8 10V7a5 5 0 0 1 9.6-1.5{% endif %}M6 10h12v11H6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></form><form method="post" action="{{ url_for('remove_itinerary_place', trip_id=trip.id, place_id=item.place_id) }}" class="itinerary-row-action itinerary-delete-form" onsubmit="return confirm('{{ item.name }}을(를) 일정에서 제외할까요?');"><button type="submit" class="icon-button" aria-label="{{ item.name }} 일정에서 제거" title="일정에서 제거">×</button></form></li>
           {% endfor %}</ol>
           <div class="free-day" {% if day['items'] %}hidden{% endif %}><span>☼</span><p>{% if day.blocked_reason %}{{ day.blocked_reason }}{% else %}이 날은 비워 두었습니다. 장소를 여기로 옮길 수 있어요.{% endif %}</p></div>
         </div>
@@ -129,18 +131,6 @@
         if (visible > 1) map.fitBounds(bounds, 55);
         else if (visible === 1) { map.panTo(bounds.getCenter()); map.setZoom(14); }
         document.querySelectorAll('.map-day-filter').forEach((button) => button.classList.toggle('active', button.dataset.day === day));
-      };
-      window.focusItineraryPlace = (placeId) => {
-        const entry = markers.find(({point}) => point.id === `place-${placeId}`);
-        if (!entry) {
-          document.getElementById('map-help').textContent = '이 장소는 좌표가 없어 지도에 표시할 수 없습니다.';
-          return;
-        }
-        showDay(entry.point.day_number ? String(entry.point.day_number) : 'all');
-        document.querySelector('.itinerary-map-panel').scrollIntoView({behavior: 'smooth', block: 'nearest'});
-        map.panTo(entry.marker.position);
-        map.setZoom(16);
-        showPoint(entry.point, entry.marker);
       };
       window.updateItineraryMapDays = (assignments) => {
         markers.forEach(({point}) => {
@@ -282,20 +272,6 @@
     }
 
     document.querySelectorAll('.itinerary-stop').forEach((item) => {
-      const focusPlace = () => {
-        if (window.focusItineraryPlace) window.focusItineraryPlace(item.dataset.placeId);
-        else statusNode.textContent = '여행 지도를 사용할 수 없습니다.';
-      };
-      item.addEventListener('click', (event) => {
-        if (event.target.closest('.itinerary-row-action')) return;
-        focusPlace();
-      });
-      item.addEventListener('keydown', (event) => {
-        if (event.target !== item) return;
-        if (event.key !== 'Enter' && event.key !== ' ') return;
-        event.preventDefault();
-        focusPlace();
-      });
       item.addEventListener('dragstart', (event) => {
         if (item.classList.contains('is-locked')) {
           event.preventDefault();

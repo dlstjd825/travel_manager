@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>숙소 · {{ trip.title }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='css/trip.css') }}">
+</head>
+<body><main class="shell trip-module-page">
+  <header class="topbar"><a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">✳</span> roam<span class="brand-light">/</span>plan</a><a class="back-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">← {{ trip.title }} 개요</a></header>
+  {% set active_page = 'accommodation' %}
+  <section class="trip-section-heading"><div class="trip-section-heading-copy"><p class="trip-section-kicker">{{ trip.city }}</p><h1>숙소</h1><p>숙박 날짜와 위치를 등록합니다.</p></div></section>
+  {% include '_trip_nav.html' %}
+  {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="notices">{% for category, message in messages %}<p class="notice {{ category }}">{{ message }}</p>{% endfor %}</div>{% endif %}{% endwith %}
+  <section class="panel module-content accommodation-module">
+    {% if accommodation %}<div class="accommodation-summary"><div><strong>{{ accommodation.name }}</strong><p>{{ accommodation.address }}</p>{% if accommodation.check_in_date and accommodation.check_out_date %}<small>체크인 {{ accommodation.check_in_date }} · 체크아웃 {{ accommodation.check_out_date }}</small>{% endif %}</div><form method="post" action="{{ url_for('delete_accommodation', trip_id=trip.id) }}" onsubmit="return confirm('등록한 숙소를 삭제할까요?');"><button class="text-button" type="submit">삭제</button></form></div>{% endif %}
+    <form method="post" action="{{ url_for('search_trip_places', trip_id=trip.id) }}" class="search-form"><input type="hidden" name="target" value="accommodation"><label>숙소 검색<input name="query" value="{{ accommodation_search_query }}" placeholder="숙소 이름이나 주소" required></label><button class="secondary-button" type="submit">검색</button></form>
+    {% if accommodation_search_results %}<div class="search-results"><p class="results-caption">검색 결과 · 선택해서 숙소 정보를 입력하세요</p>{% for result in accommodation_search_results %}<div class="search-result"><div><strong>{{ result.label }}</strong><span>{{ result.formatted_address }}</span></div><button type="button" class="select-location" data-form="accommodation-form" data-place-id="{{ result.provider_place_id }}" data-name="{{ result.label }}" data-address="{{ result.formatted_address }}" data-lat="{{ result.latitude }}" data-lng="{{ result.longitude }}">선택</button><a class="maps-attribution" href="https://www.google.com/maps/search/?api=1&query={{ result.label|urlencode }}&query_place_id={{ result.provider_place_id|urlencode }}" target="_blank" rel="noopener">지도에서 보기</a></div>{% endfor %}</div>{% endif %}
+    <form id="accommodation-form" method="post" action="{{ url_for('save_accommodation', trip_id=trip.id) }}" class="trip-form">
+      <input type="hidden" name="google_place_id" value="{{ accommodation.google_place_id if accommodation else '' }}"><input type="hidden" name="latitude" value="{{ accommodation.latitude if accommodation and accommodation.latitude is not none else '' }}"><input type="hidden" name="longitude" value="{{ accommodation.longitude if accommodation and accommodation.longitude is not none else '' }}">
+      <label>숙소명<input name="name" maxlength="150" placeholder="검색 결과를 선택하세요" value="{{ accommodation.name if accommodation else '' }}" {% if not accommodation %}disabled{% endif %} required></label><label>주소<input name="address" maxlength="300" placeholder="검색 결과의 주소" value="{{ accommodation.address if accommodation else '' }}" {% if not accommodation %}disabled{% endif %} required></label>
+      <div class="accommodation-date-row"><label>체크인<input type="date" name="check_in_date" min="{{ trip.start_date }}" max="{{ trip.end_date }}" value="{{ accommodation.check_in_date if accommodation and accommodation.check_in_date else '' }}" {% if not accommodation %}disabled{% endif %} required></label><label>체크아웃<input type="date" name="check_out_date" min="{{ trip.start_date }}" max="{{ trip.end_date }}" value="{{ accommodation.check_out_date if accommodation and accommodation.check_out_date else '' }}" {% if not accommodation %}disabled{% endif %} required></label></div>
+      <button class="primary-button" type="submit" {% if not accommodation %}disabled{% endif %}>{% if accommodation %}변경 저장{% else %}숙소 저장{% endif %}</button>
+    </form>
+  </section><footer>MADE FOR THE JOURNEY <span>✳</span></footer>
+</main>
+<script>
+const accommodationForm = document.getElementById('accommodation-form');
+if (accommodationForm) { const ci=accommodationForm.elements.check_in_date, co=accommodationForm.elements.check_out_date; co.dataset.tripStart=co.min; const sync=()=>{co.min=ci.value||co.dataset.tripStart;if(co.value&&co.value<=ci.value)co.value='';}; ci.addEventListener('change',sync);sync(); }
+document.querySelectorAll('.select-location').forEach((button)=>button.addEventListener('click',()=>{const form=document.getElementById(button.dataset.form);form.elements.latitude.value=button.dataset.lat;form.elements.longitude.value=button.dataset.lng;form.elements.google_place_id.value=button.dataset.placeId;form.elements.name.value=button.dataset.name;form.elements.address.value=button.dataset.address;form.querySelectorAll('input:not([type="hidden"]),button[type="submit"]').forEach((field)=>field.disabled=false);form.scrollIntoView({behavior:'smooth',block:'center'});form.elements.name.focus();}));
+</script></body></html>

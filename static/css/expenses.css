@@ -29,6 +29,25 @@
   margin: 8px 0 0;
 }
 
+.expenses-hero .module-kicker {
+  margin: 0 0 5px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.expenses-hero h1 {
+  margin: 0;
+  font-size: 34px;
+  letter-spacing: -1.2px;
+}
+
+.expense-place-link a {
+  color: #365b4a;
+  font-weight: 600;
+  text-decoration: none;
+}
+
 .expense-summary-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

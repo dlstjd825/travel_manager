@@ -8,7 +8,8 @@
 </head>
 <body>
   <main class="shell day-detail-page">
-    <header class="topbar"><a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">✳</span> roam<span class="brand-light">/</span>plan</a><div class="topbar-links"><a class="back-link" href="{{ url_for('trip_itinerary', trip_id=trip.id) }}">← 전체 일정</a><a class="back-link" href="{{ url_for('trip_expenses', trip_id=trip.id) }}">예산·영수증</a></div></header>
+    <header class="topbar"><a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">✳</span> roam<span class="brand-light">/</span>plan</a><a class="back-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">← 여행 개요</a></header>
+    {% set active_page = 'itinerary' %}{% include '_trip_nav.html' %}
     <section class="day-detail-hero">
       <div><span class="day-detail-kicker">{{ trip.title }}</span><h1>Day {{ day_number }}</h1><p class="intro">{{ day.date }} · {{ items|length }}곳 방문{% if accommodation_status %} · 숙소 {{ accommodation_status }}{% endif %}</p>{% if day_availability.blocked_reason %}<p class="day-availability-note is-blocked">{{ day_availability.blocked_reason }}</p>{% elif day_availability.availability_note %}<p class="day-availability-note">{{ day_availability.availability_note }}</p>{% endif %}</div>
       {% if items|length > 1 %}<form method="post" action="{{ url_for('optimize_itinerary_day', trip_id=trip.id, day_number=day_number) }}"><input type="hidden" name="return_to_day" value="1"><button class="primary-button" type="submit">방문 순서 추천하기 <span>↻</span></button></form>{% else %}<button class="primary-button" type="button" disabled title="추천할 방문지가 두 곳 이상 필요합니다">방문 순서 추천하기 <span>↻</span></button>{% endif %}
@@ -19,11 +20,24 @@
       <section class="panel day-detail-stops-panel">
         <div class="panel-heading"><div><h2>방문 순서</h2></div><span id="day-save-status" class="itinerary-save-status" role="status">장소를 드래그해 순서를 바꿀 수 있어요.</span></div>
         {% if items %}<ol id="day-stop-list" class="itinerary-stops day-detail-stops" data-reorder-url="{{ url_for('reorder_itinerary_day', trip_id=trip.id, day_number=day_number) }}">
-          {% for item in items %}<li class="itinerary-stop day-detail-stop {{ 'is-locked' if item.is_locked else '' }}" draggable="{{ 'false' if item.is_locked else 'true' }}" data-place-id="{{ item.id }}" tabindex="0" role="button" aria-label="{{ item.name }} 지도에서 보기">
+          {% for item in items %}<li class="itinerary-stop day-detail-stop {{ 'is-locked' if item.is_locked else '' }}" draggable="{{ 'false' if item.is_locked else 'true' }}" data-place-id="{{ item.id }}">
             <span class="drag-handle" aria-hidden="true">⠿</span>
             <span class="day-stop-number">{{ loop.index }}</span>
             <span class="place-pin category-pin {{ 'restaurant-pin' if item.category == 'restaurant' else 'attraction-pin' }}" role="img" aria-label="{{ '식당' if item.category == 'restaurant' else '관광지' }}">{% if item.category == 'restaurant' %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v7m-3-7v4a3 3 0 0 0 6 0V3M6 10v11m10-18v18m0-18c3 2 4 5 4 8h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{% else %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-8h6v8M3 9h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{% endif %}</span>
-            <div class="stop-details"><h3>{{ item.name }}</h3><p>{{ item.address or '주소 미입력' }}</p>{% if item.latitude is none or item.longitude is none %}<small class="location-warning">좌표 없음 · 장소 등록 화면에서 위치를 선택해 주세요</small>{% endif %}</div>
+            <div class="stop-details"><h3><a class="place-detail-link" href="{{ url_for('place_detail', trip_id=trip.id, place_id=item.id) }}">{{ item.name }}</a></h3><p>{{ item.address or '주소 미입력' }}</p>{% if item.latitude is none or item.longitude is none %}<small class="location-warning">좌표 없음 · 장소 등록 화면에서 위치를 선택해 주세요</small>{% endif %}
+              <div class="place-expense-area">
+                {% set place_expenses = expenses_by_place.get(item.id, []) %}
+                {% if place_expenses %}<ul class="place-expense-list">{% for expense in place_expenses %}<li><span><strong>{{ expense.title }}</strong><small>{{ expense.expense_date }} · {{ expense.category }}</small>{% if expense.stored_file_name %}<a href="{{ url_for('trip_expense_attachment', trip_id=trip.id, expense_id=expense.id) }}" target="_blank" rel="noopener">📎 {{ expense.original_file_name }}</a>{% endif %}</span><b>{{ '{:,.2f}'.format(expense.amount) }} {{ expense.currency }}</b><form method="post" action="{{ url_for('delete_trip_expense', trip_id=trip.id, expense_id=expense.id) }}" onsubmit="return confirm('이 지출 기록을 삭제할까요?');"><button class="icon-button" type="submit" aria-label="지출 기록 삭제">×</button></form></li>{% endfor %}</ul>{% endif %}
+                <details class="place-expense-details"><summary>이 장소의 지출 추가</summary><form class="place-expense-form" method="post" enctype="multipart/form-data" action="{{ url_for('add_trip_expense', trip_id=trip.id) }}">
+                  <input type="hidden" name="place_id" value="{{ item.id }}"><input type="hidden" name="day_number" value="{{ day_number }}">
+                  <label>항목<input name="title" maxlength="180" placeholder="예: 입장권, 점심 식사" required></label>
+                  <div class="place-expense-form-row"><label>분류<select name="category">{% for category in expense_categories %}<option value="{{ category }}" {% if (item.category == 'restaurant' and category == '식비') or (item.category == 'attraction' and category == '관광·티켓') %}selected{% endif %}>{{ category }}</option>{% endfor %}</select></label><label>금액<input type="number" name="amount" min="0" step="0.01" required></label><label>통화<select name="currency">{% for currency in currencies %}<option value="{{ currency }}" {% if currency == budget_currency %}selected{% endif %}>{{ currency }}</option>{% endfor %}</select></label></div>
+                  <label>메모<textarea name="note" rows="2" maxlength="1000" placeholder="선택 입력"></textarea></label>
+                  <label>영수증 파일<input type="file" name="attachment" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf"><small>JPG, PNG, WEBP, HEIC, HEIF, PDF · 최대 32MB</small></label>
+                  <p class="place-expense-date">지출 날짜: {{ day.date }}</p><button class="secondary-button" type="submit">지출 저장</button>
+                </form></details>
+              </div>
+            </div>
             <form method="post" action="{{ url_for('toggle_itinerary_place_lock', trip_id=trip.id, place_id=item.id) }}" class="itinerary-row-action"><input type="hidden" name="return_to_day" value="1"><button type="submit" class="itinerary-lock-button {{ 'locked' if item.is_locked else '' }}" aria-label="{{ item.name }} {{ '고정 해제' if item.is_locked else '순서 고정' }}" title="{{ '고정 해제' if item.is_locked else '순서 고정' }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="{% if item.is_locked %}M7 10V7a5 5 0 0 1 10 0v3{% else %}M8 10V7a5 5 0 0 1 9.6-1.5{% endif %}M6 10h12v11H6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></form>
             <form method="post" action="{{ url_for('remove_itinerary_place', trip_id=trip.id, place_id=item.id) }}" class="itinerary-row-action" onsubmit="return confirm('{{ item.name }}을(를) 이 일정에서 제외할까요?');"><input type="hidden" name="return_to_day" value="1"><button type="submit" class="icon-button" aria-label="{{ item.name }} 일정에서 제거" title="일정에서 제거">×</button></form>
           </li>{% endfor %}
@@ -85,16 +99,6 @@
       });
       if (markers.length > 1) map.fitBounds(bounds, 55);
       else if (markers.length === 1) map.setZoom(14);
-      window.focusDayPlace = (placeId) => {
-        const entry = markers.find(({point}) => point.id === `place-${placeId}`);
-        if (!entry) {
-          document.getElementById('map-help').textContent = '이 장소는 좌표가 없어 지도에 표시할 수 없습니다.';
-          return;
-        }
-        map.panTo(entry.marker.position);
-        map.setZoom(16);
-        showPoint(entry.point, entry.marker);
-      };
       window.updateDayMarkerOrder = (placeIds) => {
         placeIds.forEach((id, index) => {
           const entry = markers.find(({point}) => point.id === `place-${id}`);
@@ -144,11 +148,8 @@
         }
       };
       stopList.querySelectorAll('.day-detail-stop').forEach((item) => {
-        item.addEventListener('click', (event) => {
-          if (event.target.closest('form')) return;
-          if (window.focusDayPlace) window.focusDayPlace(item.dataset.placeId);
-        });
         item.addEventListener('dragstart', (event) => {
+          if (event.target.closest('form, details, input, select, textarea, button')) return event.preventDefault();
           if (item.classList.contains('is-locked')) return event.preventDefault();
           previousOrder = readOrder();
           draggedStop = item;
