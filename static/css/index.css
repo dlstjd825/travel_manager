@@ -56,7 +56,7 @@
 .section-heading {
   display: flex;
   justify-content: space-between;
-  align-items: end;
+  align-items: center;
   grid-column: 1;
 }
 
@@ -68,6 +68,98 @@
   font-size: 22px;
   letter-spacing: -.8px;
   margin: 0;
+}
+
+.trip-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.merge-trip-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 12px;
+  text-decoration: none;
+  text-align: center;
+}
+
+.merge-trips-form {
+  max-width: 760px;
+  margin: 10px 0 64px;
+  padding: 24px;
+}
+
+.merge-trip-options {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0 22px;
+}
+
+.merge-trip-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.merge-trip-option:has(input:checked) {
+  border-color: #91aa98;
+  background: #f4f8f3;
+}
+
+.merge-trip-option input {
+  width: 18px;
+  height: 18px;
+  accent-color: #537b62;
+}
+
+.merge-trip-option-content {
+  display: grid;
+  gap: 4px;
+}
+
+.merge-trip-option-content strong {
+  font-size: 15px;
+}
+
+.merge-trip-option-content small,
+.merge-trip-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.merge-title-label {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.merge-title-label input {
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font: inherit;
+}
+
+.merge-trip-note {
+  margin: 0 0 16px;
+}
+
+.merge-trips-form > .primary-button {
+  width: 100%;
+  justify-content: center;
 }
 
 .create-title h2 {

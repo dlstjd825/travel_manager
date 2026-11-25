@@ -1,364 +1,331 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ trip.title }} 일정 · 여행 플래너</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/itinerary.css') }}">
-</head>
-<body>
+ <head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1" name="viewport"/>
+  <title>
+   {{ trip.title }} 일정 &middot; 여행 플래너
+  </title>
+  <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/itinerary.css') }}" rel="stylesheet"/>
+ </head>
+ <body>
   <main class="shell">
-    <header class="topbar"><a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">✳</span> roam<span class="brand-light">/</span>plan</a><a class="back-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">← 여행 개요</a></header>
-    {% set active_page = 'itinerary' %}
-    <section class="trip-section-heading trip-section-heading-with-actions">
-      <div class="trip-section-heading-copy"><p class="trip-section-kicker">{{ trip.city }}</p><h1>일정 관리</h1><p>{{ trip.title }} · {{ trip.start_date }} — {{ trip.end_date }} · {{ night_count }}박 {{ day_count }}일</p></div>
-      <div class="itinerary-actions"><span id="itinerary-save-status" role="status">장소와 날짜를 드래그해 순서를 바꿀 수 있어요.</span>{% if not accommodation %}<a class="secondary-button itinerary-accommodation-link" href="{{ url_for('trip_detail', trip_id=trip.id, edit_accommodation=1) }}#stay-panel">숙소 추가</a>{% endif %}<form method="post" action="{{ url_for('recommend_trip_itinerary', trip_id=trip.id) }}"><button class="primary-button" type="submit">일정 다시 추천 <span>↻</span></button></form></div>
-    </section>
-    {% include '_trip_nav.html' %}
-    <details class="recommendation-settings">
-      <summary>일정 추천 시간 설정</summary>
-      <form method="post" action="{{ url_for('save_recommendation_settings', trip_id=trip.id) }}">
-        <p>교통편 여유 시간과 추천 가능한 하루 시간대를 정합니다. 도착일 기준 시각 이후에 추천 시작 시간이 걸리거나 출발일 기준 시각 이전에 일정이 끝나면 그날은 비워 둡니다.</p>
-        <div class="recommendation-settings-grid">
-          <label>항공 도착·출발 여유 시간 (시간)<input type="number" name="flight_buffer_hours" min="0" max="12" step="0.5" value="{{ recommendation_settings.flight_buffer_hours }}" required></label>
-          <label>기차 도착·출발 여유 시간 (시간)<input type="number" name="train_buffer_hours" min="0" max="12" step="0.5" value="{{ recommendation_settings.train_buffer_hours }}" required></label>
-          <label>하루 추천 시작<input type="time" name="day_start_time" value="{{ recommendation_settings.day_start_time }}" required></label>
-          <label>하루 추천 종료<input type="time" name="day_end_time" value="{{ recommendation_settings.day_end_time }}" required></label>
-          <label>도착일 추천 시작이 이 시각 이후면 하루 비우기<input type="time" name="arrival_latest_start" value="{{ recommendation_settings.arrival_latest_start }}" required></label>
-          <label>출발 전 일정 종료 기준<input type="time" name="departure_earliest_cutoff" value="{{ recommendation_settings.departure_earliest_cutoff }}" required></label>
+   <header class="topbar">
+    <a class="brand" href="{{ url_for('index') }}">
+     <span class="brand-mark">
+      ✳
+     </span>
+     roam
+     <span class="brand-light">
+      /
+     </span>
+     plan
+    </a>
+    <a class="back-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">
+     &larr; 여행 개요
+    </a>
+   </header>
+   {% set active_page = 'itinerary' %}
+   <section class="trip-section-heading trip-section-heading-with-actions">
+    <div class="trip-section-heading-copy">
+     <p class="trip-section-kicker">
+      {{ trip.city }}
+     </p>
+     <h1>
+      일정 관리
+     </h1>
+     <p>
+      {{ trip.title }} &middot; {{ trip.start_date }} &mdash; {{ trip.end_date }} &middot; {{ night_count }}박 {{ day_count }}일
+     </p>
+    </div>
+    <div class="itinerary-actions">
+     <span id="itinerary-save-status" role="status">
+      장소와 날짜를 드래그해 순서를 바꿀 수 있어요.
+     </span>
+     {% if not accommodation %}
+     <a class="secondary-button itinerary-accommodation-link" href="{{ url_for('trip_detail', trip_id=trip.id, edit_accommodation=1) }}#stay-panel">
+      숙소 추가
+     </a>
+     {% endif %}
+     <form action="{{ url_for('recommend_trip_itinerary', trip_id=trip.id) }}" method="post">
+      <button class="primary-button" type="submit">
+       일정 다시 추천
+       <span>
+        &orarr;
+       </span>
+      </button>
+     </form>
+    </div>
+   </section>
+   {% include '_trip_nav.html' %}
+   <details class="recommendation-settings">
+    <summary>
+     일정 추천 시간 설정
+    </summary>
+    <form action="{{ url_for('save_recommendation_settings', trip_id=trip.id) }}" method="post">
+     <p>
+      교통편 여유 시간과 추천 가능한 하루 시간대를 정합니다. 도착일 기준 시각 이후에 추천 시작 시간이 걸리거나 출발일 기준 시각 이전에 일정이 끝나면 그날은 비워 둡니다.
+     </p>
+     <div class="recommendation-settings-grid">
+      <label>
+       항공 도착&middot;출발 여유 시간 (시간)
+       <input max="12" min="0" name="flight_buffer_hours" required="" step="0.5" type="number" value="{{ recommendation_settings.flight_buffer_hours }}"/>
+      </label>
+      <label>
+       기차 도착&middot;출발 여유 시간 (시간)
+       <input max="12" min="0" name="train_buffer_hours" required="" step="0.5" type="number" value="{{ recommendation_settings.train_buffer_hours }}"/>
+      </label>
+      <label>
+       하루 추천 시작
+       <input name="day_start_time" required="" type="time" value="{{ recommendation_settings.day_start_time }}"/>
+      </label>
+      <label>
+       하루 추천 종료
+       <input name="day_end_time" required="" type="time" value="{{ recommendation_settings.day_end_time }}"/>
+      </label>
+      <label>
+       도착일 추천 시작이 이 시각 이후면 하루 비우기
+       <input name="arrival_latest_start" required="" type="time" value="{{ recommendation_settings.arrival_latest_start }}"/>
+      </label>
+      <label>
+       출발 전 일정 종료 기준
+       <input name="departure_earliest_cutoff" required="" type="time" value="{{ recommendation_settings.departure_earliest_cutoff }}"/>
+      </label>
+     </div>
+     <button class="secondary-button" type="submit">
+      시간 설정 저장
+     </button>
+    </form>
+   </details>
+   {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}
+   <div class="notices">
+    {% for category, message in messages %}
+    <p class="notice {{ category }}">
+     {{ message }}
+    </p>
+    {% endfor %}
+   </div>
+   {% endif %}{% endwith %}
+   <div class="itinerary-layout">
+    <div class="itinerary-schedule-column">
+     {% if has_itinerary %}
+      {% if unscheduled_places %}
+     <article class="day-card unscheduled-card">
+      <header class="day-header">
+       <div class="day-badge unscheduled-badge">
+        미정
+       </div>
+       <div class="day-heading">
+        <h2>
+         날짜 미정 장소
+        </h2>
+        <p>
+         <span class="count-value">{{ unscheduled_places|length }}곳</span> &middot; 방문 날짜를 선택해 추가하세요
+        </p>
+       </div>
+      </header>
+      <ol class="itinerary-stops unscheduled-stops">
+       {% for place in unscheduled_places %}
+       <li class="unscheduled-place-row">
+        <span aria-label="{{ '식당' if place.category == 'restaurant' else '관광지' }}" class="place-pin category-pin {{ 'restaurant-pin' if place.category == 'restaurant' else 'attraction-pin' }}" role="img">
+         {% if place.category == 'restaurant' %}
+         <svg aria-hidden="true" viewbox="0 0 24 24">
+          <path d="M6 3v7m-3-7v4a3 3 0 0 0 6 0V3M6 10v11m10-18v18m0-18c3 2 4 5 4 8h-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+          </path>
+         </svg>
+         {% else %}
+         <svg aria-hidden="true" viewbox="0 0 24 24">
+          <path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-8h6v8M3 9h18" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+          </path>
+         </svg>
+         {% endif %}
+        </span>
+        <div class="stop-details">
+         <h3>
+          <a class="place-detail-link" href="{{ url_for('place_detail', trip_id=trip.id, place_id=place.id) }}">
+           {{ place.name }}
+          </a>
+         </h3>
+         <p>
+          {{ place.address or '주소 미입력' }}
+         </p>
         </div>
-        <button class="secondary-button" type="submit">시간 설정 저장</button>
-      </form>
-    </details>
-    {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="notices">{% for category, message in messages %}<p class="notice {{ category }}">{{ message }}</p>{% endfor %}</div>{% endif %}{% endwith %}
-
-    <div class="itinerary-layout">
-      <div class="itinerary-schedule-column">
-      {% if has_itinerary %}
-      {% if unscheduled_places %}<article class="day-card unscheduled-card"><header class="day-header"><div class="day-badge unscheduled-badge">미정</div><div class="day-heading"><h2>날짜 미정 장소</h2><p>{{ unscheduled_places|length }}곳 · 방문 날짜를 선택해 추가하세요</p></div></header><ol class="itinerary-stops unscheduled-stops">{% for place in unscheduled_places %}<li class="unscheduled-place-row"><span class="place-pin category-pin {{ 'restaurant-pin' if place.category == 'restaurant' else 'attraction-pin' }}" role="img" aria-label="{{ '식당' if place.category == 'restaurant' else '관광지' }}">{% if place.category == 'restaurant' %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v7m-3-7v4a3 3 0 0 0 6 0V3M6 10v11m10-18v18m0-18c3 2 4 5 4 8h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{% else %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-8h6v8M3 9h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{% endif %}</span><div class="stop-details"><h3><a class="place-detail-link" href="{{ url_for('place_detail', trip_id=trip.id, place_id=place.id) }}">{{ place.name }}</a></h3><p>{{ place.address or '주소 미입력' }}</p></div><form class="unscheduled-add-form" method="post" action="{{ url_for('add_itinerary_place', trip_id=trip.id) }}"><input type="hidden" name="place_id" value="{{ place.id }}"><select name="day_number" aria-label="{{ place.name }} 방문 날짜" required>{% for date_day in days %}<option value="{{ date_day.day_number }}">Day {{ date_day.day_number }}</option>{% endfor %}</select><button class="primary-button" type="submit">추가</button></form></li>{% endfor %}</ol></article>{% endif %}
-      <section class="day-list">
+        <form action="{{ url_for('add_itinerary_place', trip_id=trip.id) }}" class="unscheduled-add-form" method="post">
+         <input name="place_id" type="hidden" value="{{ place.id }}"/>
+         <select aria-label="{{ place.name }} 방문 날짜" name="day_number" required="">
+          {% for date_day in days %}
+          <option value="{{ date_day.day_number }}">
+           Day {{ date_day.day_number }}
+          </option>
+          {% endfor %}
+         </select>
+         <button class="primary-button" type="submit">
+          추가
+         </button>
+        </form>
+       </li>
+       {% endfor %}
+      </ol>
+     </article>
+     {% endif %}
+     <section class="day-list" data-reorder-url="{{ url_for('reorder_trip_itinerary', trip_id=trip.id) }}">
       {% for day in days %}
-      <article class="day-card" data-day-card>
-        <header class="day-header"><div class="day-badge">DAY <strong>{{ '%02d'|format(day.day_number) }}</strong></div><div class="day-heading"><h2>{{ day.date }}</h2><p>{% if day['items'] %}{{ day['items']|length }}곳 방문{% else %}일정 여유일{% endif %}{% if day.accommodation_status %}<span class="day-stay-status"> · 숙소 {{ day.accommodation_status }}</span>{% endif %}</p>{% if day.blocked_reason %}<small class="day-availability-note is-blocked">{{ day.blocked_reason }}</small>{% elif day.availability_note %}<small class="day-availability-note">{{ day.availability_note }}</small>{% endif %}</div><a class="secondary-button day-detail-link" href="{{ url_for('itinerary_day_detail', trip_id=trip.id, day_number=day.day_number) }}">세부 일정 세우기</a><button type="button" class="day-drag-handle" draggable="true" aria-label="날짜 순서 이동" title="날짜 순서 이동">⠿</button></header>
-        <div class="day-dropzone" data-day-number="{{ day.day_number }}" data-date="{{ day.date }}" data-detail-url="{{ url_for('itinerary_day_detail', trip_id=trip.id, day_number=day.day_number) }}">
-          <ol class="itinerary-stops">{% for item in day['items'] %}
-            <li class="itinerary-stop {{ 'is-locked' if item.is_locked else '' }}" draggable="{{ 'false' if item.is_locked else 'true' }}" data-place-id="{{ item.place_id }}"><span class="drag-handle" aria-hidden="true">⠿</span><span class="place-pin category-pin {{ 'restaurant-pin' if item.category == 'restaurant' else 'attraction-pin' }}" role="img" aria-label="{{ '식당' if item.category == 'restaurant' else '관광지' }}">{% if item.category == 'restaurant' %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v7m-3-7v4a3 3 0 0 0 6 0V3M6 10v11m10-18v18m0-18c3 2 4 5 4 8h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{% else %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-8h6v8M3 9h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{% endif %}</span><div class="stop-details"><h3><a class="place-detail-link" href="{{ url_for('place_detail', trip_id=trip.id, place_id=item.place_id) }}">{{ item.name }}</a></h3><p>{{ item.address or '주소 미입력' }}</p>{% if item.latitude is none %}<small class="location-warning">좌표 없음 · 장소 등록 화면에서 위치를 선택해 주세요</small>{% endif %}</div><form method="post" action="{{ url_for('toggle_itinerary_place_lock', trip_id=trip.id, place_id=item.place_id) }}" class="itinerary-row-action itinerary-lock-form"><button type="submit" class="itinerary-lock-button {{ 'locked' if item.is_locked else '' }}" aria-label="{{ item.name }} {{ '고정 해제' if item.is_locked else '순서 고정' }}" title="{{ '고정 해제' if item.is_locked else '순서 고정' }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="{% if item.is_locked %}M7 10V7a5 5 0 0 1 10 0v3{% else %}M8 10V7a5 5 0 0 1 9.6-1.5{% endif %}M6 10h12v11H6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></form><form method="post" action="{{ url_for('remove_itinerary_place', trip_id=trip.id, place_id=item.place_id) }}" class="itinerary-row-action itinerary-delete-form" onsubmit="return confirm('{{ item.name }}을(를) 일정에서 제외할까요?');"><button type="submit" class="icon-button" aria-label="{{ item.name }} 일정에서 제거" title="일정에서 제거">×</button></form></li>
-          {% endfor %}</ol>
-          <div class="free-day" {% if day['items'] %}hidden{% endif %}><span>☼</span><p>{% if day.blocked_reason %}{{ day.blocked_reason }}{% else %}이 날은 비워 두었습니다. 장소를 여기로 옮길 수 있어요.{% endif %}</p></div>
+      <article class="day-card" data-day-card="">
+       <header class="day-header">
+        <div class="day-badge">
+         DAY
+         <strong>
+          {{ '%02d'|format(day.day_number) }}
+         </strong>
         </div>
+        <div class="day-heading">
+         <h2>
+          {{ day.date }}
+         </h2>
+         <p>
+          {% if day['items'] %}<span class="count-value">{{ day['items']|length }}곳</span> 방문{% else %}일정 여유일{% endif %}{% if day.accommodation_status %}
+          <span class="day-stay-status">
+           &middot; 숙소 {{ day.accommodation_status }}
+          </span>
+          {% endif %}
+         </p>
+        </div>
+        <a class="secondary-button day-detail-link" href="{{ url_for('itinerary_day_detail', trip_id=trip.id, day_number=day.day_number) }}">
+         세부 일정 세우기
+        </a>
+        <button aria-label="날짜 순서 이동" class="day-drag-handle" draggable="true" title="날짜 순서 이동" type="button">
+         ⠿
+        </button>
+       </header>
+       <div class="day-dropzone" data-date="{{ day.date }}" data-day-number="{{ day.day_number }}" data-detail-url="{{ url_for('itinerary_day_detail', trip_id=trip.id, day_number=day.day_number) }}">
+        <ol class="itinerary-stops">
+         {% for item in day['items'] %}
+         <li class="itinerary-stop {{ 'is-locked' if item.is_locked else '' }}" data-place-id="{{ item.place_id }}" draggable="{{ 'false' if item.is_locked else 'true' }}">
+          <span aria-hidden="true" class="drag-handle">
+           ⠿
+          </span>
+          <span aria-label="{{ '식당' if item.category == 'restaurant' else '관광지' }}" class="place-pin category-pin {{ 'restaurant-pin' if item.category == 'restaurant' else 'attraction-pin' }}" role="img">
+           {% if item.category == 'restaurant' %}
+           <svg aria-hidden="true" viewbox="0 0 24 24">
+            <path d="M6 3v7m-3-7v4a3 3 0 0 0 6 0V3M6 10v11m10-18v18m0-18c3 2 4 5 4 8h-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+            </path>
+           </svg>
+           {% else %}
+           <svg aria-hidden="true" viewbox="0 0 24 24">
+            <path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-8h6v8M3 9h18" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+            </path>
+           </svg>
+           {% endif %}
+          </span>
+          <div class="stop-details">
+           <h3>
+            <a class="place-detail-link" href="{{ url_for('place_detail', trip_id=trip.id, place_id=item.place_id) }}">
+             {{ item.name }}
+            </a>
+           </h3>
+           <p>
+            {{ item.address or '주소 미입력' }}
+           </p>
+           {% if item.latitude is none %}
+           <small class="location-warning">
+            좌표 없음 &middot; 장소 등록 화면에서 위치를 선택해 주세요
+           </small>
+           {% endif %}
+          </div>
+          <form action="{{ url_for('toggle_itinerary_place_lock', trip_id=trip.id, place_id=item.place_id) }}" class="itinerary-row-action itinerary-lock-form" method="post">
+           <button aria-label="{{ item.name }} {{ '고정 해제' if item.is_locked else '순서 고정' }}" class="itinerary-lock-button {{ 'locked' if item.is_locked else '' }}" title="{{ '고정 해제' if item.is_locked else '순서 고정' }}" type="submit">
+            <svg aria-hidden="true" viewbox="0 0 24 24">
+             <path d="{% if item.is_locked %}M7 10V7a5 5 0 0 1 10 0v3{% else %}M8 10V7a5 5 0 0 1 9.6-1.5{% endif %}M6 10h12v11H6z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+             </path>
+            </svg>
+           </button>
+          </form>
+          <form action="{{ url_for('remove_itinerary_place', trip_id=trip.id, place_id=item.place_id) }}" class="itinerary-row-action itinerary-delete-form" method="post" onsubmit="return confirm('{{ item.name }}을(를) 일정에서 제외할까요?');">
+           <button aria-label="{{ item.name }} 일정에서 제거" class="icon-button" title="일정에서 제거" type="submit">
+            &times;
+           </button>
+          </form>
+         </li>
+         {% endfor %}
+        </ol>
+        <div class="free-day" {% if day['items'] %}hidden{% endif %}>
+         <span>
+          ☼
+         </span>
+         <p>
+          {% if day.blocked_reason %}{{ day.blocked_reason }}{% else %}이 날은 비워 두었습니다. 장소를 여기로 옮길 수 있어요.{% endif %}
+         </p>
+        </div>
+       </div>
       </article>
       {% endfor %}
-      </section>
-      {% else %}
-      <div class="empty-state itinerary-empty"><span class="empty-icon">↗</span><h3>아직 추천 일정이 없습니다</h3><p>장소를 등록한 뒤 여행 일정 추천을 받아 보세요.</p><a class="secondary-button inline-button" href="{{ url_for('trip_detail', trip_id=trip.id) }}">장소 등록으로 돌아가기</a></div>
-      {% endif %}
-      </div>
-      <section class="panel itinerary-map-panel">
-        <div class="panel-heading"><div><h2>여행 지도</h2></div></div>
-        <div class="map-day-filters" role="group" aria-label="지도에 표시할 일정 날짜">
-          <button type="button" class="map-day-filter active" data-day="all">전체</button>
-          {% for day_number in map_days %}<button type="button" class="map-day-filter" data-day="{{ day_number }}">{{ day_number }}일차</button>{% endfor %}
-        </div>
-        {% if maps_enabled %}<div id="trip-map" class="trip-map" aria-label="일정별 여행 지도"></div>
-        {% else %}<div class="map-unavailable">여행 지도를 표시하려면 Maps JavaScript API가 허용된 API 키가 필요합니다.</div>{% endif %}
-      </section>
+     </section>
+     {% else %}
+     <div class="empty-state itinerary-empty">
+      <span class="empty-icon">
+       &nearrow;
+      </span>
+      <h3>
+       아직 추천 일정이 없습니다
+      </h3>
+      <p>
+       장소를 등록한 뒤 여행 일정 추천을 받아 보세요.
+      </p>
+      <a class="secondary-button inline-button" href="{{ url_for('trip_detail', trip_id=trip.id) }}">
+       장소 등록으로 돌아가기
+      </a>
+     </div>
+     {% endif %}
     </div>
-    <footer>MADE FOR THE JOURNEY <span>✳</span></footer>
+    <section class="panel itinerary-map-panel">
+     <div class="panel-heading">
+      <div>
+       <h2>
+        여행 지도
+       </h2>
+      </div>
+     </div>
+     <div aria-label="지도에 표시할 일정 날짜" class="map-day-filters" role="group">
+      <button class="map-day-filter active" data-day="all" type="button">
+       전체
+      </button>
+      {% for day_number in map_days %}
+      <button class="map-day-filter" data-day="{{ day_number }}" type="button">
+       {{ day_number }}일차
+      </button>
+      {% endfor %}
+     </div>
+     {% if maps_enabled %}
+     <div aria-label="일정별 여행 지도" class="trip-map" id="trip-map">
+     </div>
+     {% else %}
+     <div class="map-unavailable">
+      여행 지도를 표시하려면 Maps JavaScript API가 허용된 API 키가 필요합니다.
+     </div>
+     {% endif %}
+    </section>
+   </div>
+   <footer>
+    MADE FOR THE JOURNEY
+    <span>
+     ✳
+    </span>
+   </footer>
   </main>
-  {% if maps_enabled %}<script id="map-points" type="application/json">{{ map_points|tojson }}</script><script>
-    window.initTravelMap = async function () {
-      const points = JSON.parse(document.getElementById('map-points').textContent);
-      const [{Map: GoogleMap, InfoWindow}, {LatLngBounds}] = await Promise.all([
-        google.maps.importLibrary('maps'), google.maps.importLibrary('core'),
-      ]);
-      const {AdvancedMarkerElement} = await google.maps.importLibrary('marker');
-      const map = new GoogleMap(document.getElementById('trip-map'), {
-        center: points.length ? {lat: points[0].latitude, lng: points[0].longitude} : {lat: 25, lng: 0},
-        zoom: points.length ? 11 : 2, mapId: 'DEMO_MAP_ID', mapTypeControl: false,
-        streetViewControl: false, fullscreenControl: true,
-      });
-      const infoWindow = new InfoWindow();
-      let selectedDay = 'all';
-      const showPoint = (point, marker) => {
-        const content = document.createElement('div');
-        content.className = 'map-info-content';
-        const title = document.createElement('strong');
-        title.textContent = point.name;
-        const details = document.createElement('p');
-        details.textContent = point.kind === 'accommodation' && point.check_in_date
-          ? `${point.address || ''}${point.address ? ' · ' : ''}${point.check_in_date} – ${point.check_out_date}`
-          : (point.address || '');
-        content.append(title, details);
-        infoWindow.setContent(content);
-        infoWindow.open({map, anchor: marker});
-      };
-      const markers = points.map((point) => {
-        const glyph = document.createElement('div');
-        if (point.kind === 'accommodation') {
-          glyph.className = 'map-home-glyph';
-          glyph.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 11 12 4l9 7M5 10v10h14V10M9 20v-6h6v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-        } else {
-          glyph.className = `map-place-marker ${point.category === 'restaurant' ? 'restaurant-marker' : 'attraction-marker'}`;
-          glyph.classList.add('day-marker');
-          glyph.textContent = point.day_number ? `Day${point.day_number}` : '미정';
-        }
-        const marker = new AdvancedMarkerElement({
-          map, position: {lat: point.latitude, lng: point.longitude}, title: point.name,
-          gmpClickable: true, zIndex: point.kind === 'accommodation' ? 1000 : 100,
-          anchorLeft: '-50%', anchorTop: '-50%', content: glyph,
-        });
-        marker.addListener('click', () => showPoint(point, marker));
-        return {point, marker};
-      });
-      const showDay = (day) => {
-        selectedDay = day;
-        const bounds = new LatLngBounds();
-        let visible = 0;
-        markers.forEach(({point, marker}) => {
-          const show = point.kind === 'accommodation'
-            ? (day === 'all' || !(point.check_in_date && point.check_out_date) || point.stay_day_numbers.includes(Number(day)))
-            : (day === 'all' || String(point.day_number) === day);
-          marker.map = show ? map : null;
-          if (point.kind !== 'accommodation') {
-            const dayMarker = day === 'all';
-            marker.content.classList.toggle('day-marker', dayMarker);
-            marker.content.textContent = dayMarker
-              ? (point.day_number ? `Day${point.day_number}` : '미정')
-              : (point.sequence_number ? String(point.sequence_number) : '•');
-          }
-          if (show) { bounds.extend(marker.position); visible += 1; }
-        });
-        if (visible > 1) map.fitBounds(bounds, 55);
-        else if (visible === 1) { map.panTo(bounds.getCenter()); map.setZoom(14); }
-        document.querySelectorAll('.map-day-filter').forEach((button) => button.classList.toggle('active', button.dataset.day === day));
-      };
-      window.updateItineraryMapDays = (assignments) => {
-        markers.forEach(({point}) => {
-          if (point.kind === 'accommodation') return;
-          const assignment = assignments[point.id.replace('place-', '')] || {};
-          point.day_number = assignment.day_number || null;
-          point.sequence_number = assignment.sequence_number || null;
-        });
-        showDay(selectedDay);
-      };
-      document.querySelectorAll('.map-day-filter').forEach((button) => button.addEventListener('click', () => showDay(button.dataset.day)));
-      showDay('all');
-    };
-  </script><script async src="https://maps.googleapis.com/maps/api/js?key={{ config.GOOGLE_MAPS_BROWSER_API_KEY|urlencode }}&loading=async&callback=initTravelMap&v=weekly"></script>{% endif %}
-  {% if has_itinerary %}<script>
-    const reorderUrl = {{ url_for('reorder_trip_itinerary', trip_id=trip.id)|tojson }};
-    let zones = [...document.querySelectorAll('.day-dropzone')];
-    const dayList = document.querySelector('.day-list');
-    const calendarDates = zones.map((zone) => zone.dataset.date);
-    const statusNode = document.getElementById('itinerary-save-status');
-    let draggedItem = null;
-    let draggedDayCard = null;
-    let previousLayout = null;
-    let previousDayOrder = null;
-    let previousDayMeta = null;
-
-    function refreshZones() {
-      zones = [...document.querySelectorAll('.day-dropzone')];
-    }
-
-    function currentLayout() {
-      return zones.map((zone) => ({
-        zone,
-        placeIds: [...zone.querySelectorAll('.itinerary-stop')].map((item) => item.dataset.placeId),
-      }));
-    }
-
-    function takeSnapshot() {
-      refreshZones();
-      previousLayout = currentLayout();
-      previousDayOrder = [...dayList.querySelectorAll('.day-card')];
-      previousDayMeta = zones.map((zone) => ({
-        zone,
-        dayNumber: zone.dataset.dayNumber,
-        date: zone.dataset.date,
-        detailUrl: zone.dataset.detailUrl,
-      }));
-    }
-
-    function reindexDayCards() {
-      refreshZones();
-      zones.forEach((zone, index) => {
-        const dayNumber = index + 1;
-        const dayDate = calendarDates[index];
-        zone.dataset.dayNumber = String(dayNumber);
-        zone.dataset.date = dayDate;
-        zone.dataset.detailUrl = zone.dataset.detailUrl.replace(/\/day\/\d+$/, `/day/${dayNumber}`);
-        const card = zone.closest('.day-card');
-        card.querySelector('.day-badge strong').textContent = String(dayNumber).padStart(2, '0');
-        card.querySelector('.day-heading h2').textContent = dayDate;
-        updateDayDetailLink(zone);
-      });
-      updateEmptyDays();
-    }
-
-    function updateEmptyDays() {
-      zones.forEach((zone) => {
-        const empty = zone.querySelector('.free-day');
-        empty.hidden = zone.querySelectorAll('.itinerary-stop').length > 0;
-      });
-    }
-
-    function updateDayDetailLink(zone) {
-      const card = zone.closest('.day-card');
-      const link = card.querySelector('.day-detail-link');
-      if (link) link.href = zone.dataset.detailUrl;
-    }
-
-    function placeBeforeElement(list, y) {
-      const others = [...list.querySelectorAll('.itinerary-stop:not(.dragging)')];
-      return others.reduce((closest, item) => {
-        const box = item.getBoundingClientRect();
-        const offset = y - box.top - box.height / 2;
-        if (offset < 0 && offset > closest.offset) return {offset, item};
-        return closest;
-      }, {offset: Number.NEGATIVE_INFINITY, item: null}).item;
-    }
-
-    async function saveLayout() {
-      statusNode.textContent = '일정을 저장하고 있어요…';
-      const days = zones.map((zone) => ({
-        day_number: Number(zone.dataset.dayNumber),
-        place_ids: [...zone.querySelectorAll('.itinerary-stop')].map((item) => Number(item.dataset.placeId)),
-      }));
-      try {
-        const response = await fetch(reorderUrl, {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({days}),
-        });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || '저장하지 못했습니다.');
-        if (window.updateItineraryMapDays) {
-          const dayAssignments = {};
-          days.forEach(({day_number, place_ids}) => place_ids.forEach((id, index) => {
-            dayAssignments[id] = {day_number, sequence_number: index + 1};
-          }));
-          window.updateItineraryMapDays(dayAssignments);
-        }
-        zones.forEach((zone) => {
-          const heading = zone.closest('.day-card').querySelector('.day-heading p');
-          const itemCount = zone.querySelectorAll('.itinerary-stop').length;
-          heading.textContent = itemCount ? `${itemCount}곳 방문` : '일정 여유일';
-        });
-        statusNode.textContent = '일정을 저장했어요.';
-      } catch (error) {
-        if (previousDayOrder) previousDayOrder.forEach((card) => dayList.append(card));
-        if (previousDayMeta) previousDayMeta.forEach(({zone, dayNumber, date, detailUrl}) => {
-          zone.dataset.dayNumber = dayNumber;
-          zone.dataset.date = date;
-          zone.dataset.detailUrl = detailUrl;
-          const card = zone.closest('.day-card');
-          card.querySelector('.day-badge strong').textContent = String(dayNumber).padStart(2, '0');
-          card.querySelector('.day-heading h2').textContent = date;
-          const link = card.querySelector('.day-detail-link');
-          if (link) link.href = detailUrl;
-        });
-        refreshZones();
-        previousLayout.forEach(({zone, placeIds}) => {
-          const list = zone.querySelector('.itinerary-stops');
-          placeIds.forEach((id) => {
-            const item = document.querySelector(`.itinerary-stop[data-place-id="${id}"]`);
-            if (item) list.append(item);
-          });
-        });
-        updateEmptyDays();
-        statusNode.textContent = error.message;
-      }
-    }
-
-    document.querySelectorAll('.itinerary-stop').forEach((item) => {
-      item.addEventListener('dragstart', (event) => {
-        if (item.classList.contains('is-locked')) {
-          event.preventDefault();
-          return;
-        }
-        draggedItem = item;
-        event.stopPropagation();
-        takeSnapshot();
-        item.classList.add('dragging');
-        event.dataTransfer.effectAllowed = 'move';
-        event.dataTransfer.setData('text/plain', item.dataset.placeId);
-      });
-      item.addEventListener('dragend', () => item.classList.remove('dragging'));
-    });
-
-    zones.forEach((zone) => {
-      const list = zone.querySelector('.itinerary-stops');
-      zone.addEventListener('dragover', (event) => {
-        if (!draggedItem) return;
-        event.preventDefault();
-        zone.classList.add('drag-over');
-        const after = placeBeforeElement(list, event.clientY);
-        if (after) list.insertBefore(draggedItem, after);
-        else list.append(draggedItem);
-      });
-      zone.addEventListener('dragleave', (event) => {
-        if (!zone.contains(event.relatedTarget)) zone.classList.remove('drag-over');
-      });
-      zone.addEventListener('drop', async (event) => {
-        if (!draggedItem) return;
-        event.preventDefault();
-        zone.classList.remove('drag-over');
-        draggedItem.classList.remove('dragging');
-        draggedItem = null;
-        updateEmptyDays();
-        await saveLayout();
-      });
-    });
-
-    document.querySelectorAll('.day-drag-handle').forEach((handle) => {
-      handle.addEventListener('dragstart', (event) => {
-        event.stopPropagation();
-        takeSnapshot();
-        draggedDayCard = handle.closest('.day-card');
-        draggedDayCard.classList.add('day-card-dragging');
-        event.dataTransfer.effectAllowed = 'move';
-        event.dataTransfer.setData('text/plain', handle.closest('.day-dropzone').dataset.dayNumber);
-      });
-      handle.addEventListener('dragend', () => {
-        if (draggedDayCard) draggedDayCard.classList.remove('day-card-dragging');
-        draggedDayCard = null;
-      });
-    });
-
-    document.querySelectorAll('.day-list .day-card').forEach((card) => {
-      card.addEventListener('dragover', (event) => {
-        if (!draggedDayCard) return;
-        event.preventDefault();
-        event.stopPropagation();
-        if (card === draggedDayCard) return;
-        const box = card.getBoundingClientRect();
-        const insertAfter = event.clientY >= box.top + box.height / 2;
-        dayList.insertBefore(draggedDayCard, insertAfter ? card.nextElementSibling : card);
-      });
-      card.addEventListener('drop', async (event) => {
-        if (!draggedDayCard) return;
-        event.preventDefault();
-        event.stopPropagation();
-        draggedDayCard.classList.remove('day-card-dragging');
-        draggedDayCard = null;
-        reindexDayCards();
-        await saveLayout();
-      });
-    });
-    dayList.addEventListener('dragover', (event) => {
-      if (!draggedDayCard) return;
-      event.preventDefault();
-    });
-    dayList.addEventListener('drop', async (event) => {
-      if (!draggedDayCard) return;
-      event.preventDefault();
-      dayList.append(draggedDayCard);
-      draggedDayCard.classList.remove('day-card-dragging');
-      draggedDayCard = null;
-      reindexDayCards();
-      await saveLayout();
-    });
-  </script>{% endif %}
-</body>
+  {% if maps_enabled %}
+  <script id="map-points" type="application/json">
+   {{ map_points|tojson }}
+  </script>
+  <script src="{{ url_for('static', filename='js/itinerary-map.js') }}">
+  </script>
+  <script async="" src="https://maps.googleapis.com/maps/api/js?key={{ config.GOOGLE_MAPS_BROWSER_API_KEY|urlencode }}&amp;loading=async&amp;callback=initTravelMap&amp;v=weekly">
+  </script>
+  {% endif %}
+  {% if has_itinerary %}
+  <script defer="True" src="{{ url_for('static', filename='js/itinerary.js') }}">
+  </script>
+  {% endif %}
+{% include '_preserve_scroll.html' %}
+ </body>
 </html>

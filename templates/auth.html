@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ko">
+ <head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1" name="viewport"/>
+  <title>{{ '회원가입' if mode == 'register' else '로그인' }} · roam/plan</title>
+  <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
+ </head>
+ <body>
+  <main class="auth-shell">
+   <a class="brand" href="{{ url_for('login') }}"><span class="brand-mark">✳</span> roam<span class="brand-light">/</span>plan</a>
+   <section class="panel auth-panel">
+    <h1>{{ '회원가입' if mode == 'register' else '로그인' }}</h1>
+    <p class="auth-description">{{ '계정을 만들어 여행 계획을 저장하세요.' if mode == 'register' else '계정에 로그인해 여행 계획을 확인하세요.' }}</p>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+     {% if messages %}
+      <div class="notices">
+       {% for category, message in messages %}<p class="notice {{ category }}">{{ message }}</p>{% endfor %}
+      </div>
+     {% endif %}
+    {% endwith %}
+    <form class="auth-form" method="post">
+     <label>아이디<input autocomplete="username" name="username" type="text" minlength="3" maxlength="24" required/></label>
+     <label>비밀번호<input autocomplete="{{ 'new-password' if mode == 'register' else 'current-password' }}" name="password" type="password" minlength="{{ 10 if mode == 'register' else 1 }}" required/></label>
+     {% if mode == 'register' %}<small>비밀번호는 10자 이상이어야 합니다.</small>{% endif %}
+     <button class="primary-button" type="submit">{{ '가입하기' if mode == 'register' else '로그인' }}</button>
+    </form>
+    <p class="auth-switch">{% if mode == 'register' %}이미 계정이 있나요? <a href="{{ url_for('login') }}">로그인</a>{% else %}계정이 없나요? <a href="{{ url_for('register') }}">회원가입</a>{% endif %}</p>
+   </section>
+  </main>
+ </body>
+</html>

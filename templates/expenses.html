@@ -1,54 +1,273 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ trip.title }} 경비 · 여행 플래너</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/expenses.css') }}">
-</head>
-<body>
+ <head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1" name="viewport"/>
+  <title>
+   {{ trip.title }} 경비 &middot; 여행 플래너
+  </title>
+  <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/expenses.css') }}" rel="stylesheet"/>
+ </head>
+ <body>
   <main class="shell">
-    <header class="topbar"><a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">✳</span> roam<span class="brand-light">/</span>plan</a><a class="back-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">← 여행 개요</a></header>
-    {% set active_page = 'expenses' %}
-    <section class="trip-section-heading"><div class="trip-section-heading-copy"><p class="trip-section-kicker">{{ trip.city }}</p><h1>예산 영수증</h1><p>{{ trip.title }} · 여행 중 지출, 영수증과 티켓을 관리합니다.</p></div></section>
-    {% include '_trip_nav.html' %}
-    {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="notices">{% for category, message in messages %}<p class="notice {{ category }}">{{ message }}</p>{% endfor %}</div>{% endif %}{% endwith %}
-
-    <section class="expense-summary-grid">
-      <article class="panel budget-panel">
-        <div class="panel-heading"><div><h2>여행 예산</h2></div></div>
-        <form class="expense-form" method="post" action="{{ url_for('update_trip_budget', trip_id=trip.id) }}">
-          <label>예산 금액<div class="amount-field"><input type="number" name="budget_amount" min="0" step="0.01" value="{{ '%.2f'|format(trip.budget_amount) }}" required><select name="budget_currency" aria-label="예산 통화">{% for currency in currencies %}<option value="{{ currency }}" {% if currency == trip.budget_currency %}selected{% endif %}>{{ currency }}</option>{% endfor %}</select></div></label>
-          <button class="primary-button" type="submit">예산 저장</button>
-        </form>
-        <div class="budget-numbers"><div><span>예산 통화로 기록한 지출</span><strong>{{ '{:,.2f}'.format(spent_in_budget_currency) }} {{ trip.budget_currency }}</strong></div><div><span>예산 잔액</span><strong class="{{ 'over-budget' if remaining_budget < 0 else '' }}">{{ '{:,.2f}'.format(remaining_budget) }} {{ trip.budget_currency }}</strong></div></div>
-      </article>
-      <article class="panel expense-totals-panel">
-        <div class="panel-heading"><div><h2>통화별 지출 합계</h2></div></div>
-        {% if totals %}<div class="currency-totals">{% for total in totals %}<div><span>{{ total.currency }}</span><strong>{{ '{:,.2f}'.format(total.total) }}</strong></div>{% endfor %}</div>{% else %}<p class="subtle-empty">아직 기록된 지출이 없습니다.</p>{% endif %}
-        <p class="form-hint">통화가 다른 금액은 환산하지 않고 각각 합산합니다.</p>
-      </article>
-    </section>
-
-    <section class="expense-content-grid">
-      <article class="panel expense-entry-panel">
-        <div class="panel-heading"><div><h2>지출·티켓 추가</h2></div></div>
-        <form class="expense-form" method="post" enctype="multipart/form-data" action="{{ url_for('add_trip_expense', trip_id=trip.id) }}">
-          <label>항목 이름<input name="title" maxlength="180" placeholder="예: 기차표, 저녁 식사" required></label>
-          <div class="expense-form-row"><label>분류<select name="category">{% for category in categories %}<option value="{{ category }}">{{ category }}</option>{% endfor %}</select></label><label>날짜<input type="date" name="expense_date" value="{{ today }}" required></label></div>
-          <div class="expense-form-row"><label>금액<input type="number" name="amount" min="0" step="0.01" required></label><label>통화<select name="currency">{% for currency in currencies %}<option value="{{ currency }}" {% if currency == trip.budget_currency %}selected{% endif %}>{{ currency }}</option>{% endfor %}</select></label></div>
-          <label>메모<textarea name="note" rows="3" maxlength="1000" placeholder="예약 번호, 이용 정보 등"></textarea></label>
-          <label>영수증 또는 티켓 파일<input type="file" name="attachment" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf"><small>JPG, PNG, WEBP, HEIC, HEIF, PDF · 최대 32MB</small></label>
-          <button class="primary-button" type="submit">기록 저장 <span>↗</span></button>
-        </form>
-      </article>
-
-      <article class="panel expense-list-panel">
-        <div class="panel-heading"><div><h2>여행 기록 <span class="place-count">{{ expenses|length }}</span></h2></div></div>
-        {% if expenses %}<div class="expense-list">{% for expense in expenses %}<div class="expense-row"><div class="expense-date">{{ expense.expense_date[5:] }}</div><div class="expense-detail"><div class="expense-title-line"><h3>{{ expense.title }}</h3><span class="expense-category">{{ expense.category }}</span></div>{% if expense.place_name %}<p class="expense-place-link">장소 · <a href="{{ url_for('place_detail', trip_id=trip.id, place_id=expense.place_id) }}">{{ expense.place_name }}</a></p>{% endif %}<p class="expense-amount">{{ '{:,.2f}'.format(expense.amount) }} {{ expense.currency }}</p>{% if expense.note %}<p class="expense-note">{{ expense.note }}</p>{% endif %}{% if expense.stored_file_name %}<a class="attachment-link" href="{{ url_for('trip_expense_attachment', trip_id=trip.id, expense_id=expense.id) }}" target="_blank" rel="noopener">📎 {{ expense.original_file_name }}</a>{% endif %}</div><form method="post" action="{{ url_for('delete_trip_expense', trip_id=trip.id, expense_id=expense.id) }}" onsubmit="return confirm('이 기록을 삭제할까요?');"><input type="hidden" name="return_to_expenses" value="1"><button type="submit" class="icon-button" aria-label="기록 삭제" title="기록 삭제">×</button></form></div>{% endfor %}</div>{% else %}<div class="empty-state compact"><h3>아직 여행 기록이 없습니다</h3><p>예산을 설정하고 첫 지출이나 티켓을 추가해 보세요.</p></div>{% endif %}
-      </article>
-    </section>
-    <footer>MADE FOR THE JOURNEY <span>✳</span></footer>
+   <header class="topbar">
+    <a class="brand" href="{{ url_for('index') }}">
+     <span class="brand-mark">
+      ✳
+     </span>
+     roam
+     <span class="brand-light">
+      /
+     </span>
+     plan
+    </a>
+    <a class="back-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">
+     &larr; 여행 개요
+    </a>
+   </header>
+   {% set active_page = 'expenses' %}
+   <section class="trip-section-heading">
+    <div class="trip-section-heading-copy">
+     <p class="trip-section-kicker">
+      {{ trip.city }}
+     </p>
+     <h1>
+      예산 영수증
+     </h1>
+     <p>
+      {{ trip.title }} &middot; 여행 중 지출, 영수증과 티켓을 관리합니다.
+     </p>
+    </div>
+   </section>
+   {% include '_trip_nav.html' %}
+    {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}
+   <div class="notices">
+    {% for category, message in messages %}
+    <p class="notice {{ category }}">
+     {{ message }}
+    </p>
+    {% endfor %}
+   </div>
+   {% endif %}{% endwith %}
+   <section class="expense-summary-grid">
+    <article class="panel budget-panel">
+     <div class="panel-heading">
+      <div>
+       <h2>
+        여행 예산
+       </h2>
+      </div>
+     </div>
+     <form action="{{ url_for('update_trip_budget', trip_id=trip.id) }}" class="expense-form" method="post">
+      <label>
+       예산 금액
+       <div class="amount-field">
+        <input min="0" name="budget_amount" required="" step="0.01" type="number" value="{{ '%.2f'|format(trip.budget_amount) }}"/>
+        <select aria-label="예산 통화" name="budget_currency">
+         {% for currency in currencies %}
+         <option value="{{ currency }}" {% if currency == trip.budget_currency %}selected{% endif %}>
+          {{ currency }}
+         </option>
+         {% endfor %}
+        </select>
+       </div>
+      </label>
+      <button class="primary-button" type="submit">
+       예산 저장
+      </button>
+     </form>
+     <div class="budget-numbers">
+      <div>
+       <span>
+        예산 통화로 기록한 지출
+       </span>
+       <strong>
+        {{ '{:,.2f}'.format(spent_in_budget_currency) }} {{ trip.budget_currency }}
+       </strong>
+      </div>
+      <div>
+       <span>
+        예산 잔액
+       </span>
+       <strong class="{{ 'over-budget' if remaining_budget < 0 else '' }}">
+        {{ '{:,.2f}'.format(remaining_budget) }} {{ trip.budget_currency }}
+       </strong>
+      </div>
+     </div>
+    </article>
+    <article class="panel expense-totals-panel">
+     <div class="panel-heading">
+      <div>
+       <h2>
+        통화별 지출 합계
+       </h2>
+      </div>
+     </div>
+     {% if totals %}
+     <div class="currency-totals">
+      {% for total in totals %}
+      <div>
+       <span>
+        {{ total.currency }}
+       </span>
+       <strong>
+        {{ '{:,.2f}'.format(total.total) }}
+       </strong>
+      </div>
+      {% endfor %}
+     </div>
+     {% else %}
+     <p class="subtle-empty">
+      아직 기록된 지출이 없습니다.
+     </p>
+     {% endif %}
+     <p class="form-hint">
+      통화가 다른 금액은 환산하지 않고 각각 합산합니다.
+     </p>
+    </article>
+   </section>
+   <section class="expense-content-grid">
+    <article class="panel expense-entry-panel">
+     <div class="panel-heading">
+      <div>
+       <h2>
+        지출&middot;티켓 추가
+       </h2>
+      </div>
+     </div>
+     <form action="{{ url_for('add_trip_expense', trip_id=trip.id) }}" class="expense-form" enctype="multipart/form-data" method="post">
+      <label>
+       항목 이름
+       <input maxlength="180" name="title" placeholder="예: 기차표, 저녁 식사" required=""/>
+      </label>
+      <div class="expense-form-row">
+       <label>
+        분류
+        <select name="category">
+         {% for category in categories %}
+         <option value="{{ category }}">
+          {{ category }}
+         </option>
+         {% endfor %}
+        </select>
+       </label>
+       <label>
+        날짜
+        <input name="expense_date" required="" type="date" value="{{ today }}"/>
+       </label>
+      </div>
+      <div class="expense-form-row">
+       <label>
+        금액
+        <input min="0" name="amount" required="" step="0.01" type="number"/>
+       </label>
+       <label>
+        통화
+        <select name="currency">
+         {% for currency in currencies %}
+         <option value="{{ currency }}" {% if currency == trip.budget_currency %}selected{% endif %}>
+          {{ currency }}
+         </option>
+         {% endfor %}
+        </select>
+       </label>
+      </div>
+      <label>
+       메모
+       <textarea maxlength="1000" name="note" placeholder="예약 번호, 이용 정보 등" rows="3"></textarea>
+      </label>
+      <label>
+       영수증 또는 티켓 파일
+       <input accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf" name="attachment" type="file"/>
+       <small>
+        JPG, PNG, WEBP, HEIC, HEIF, PDF &middot; 최대 32MB
+       </small>
+      </label>
+      <button class="primary-button" type="submit">
+       기록 저장
+       <span>
+        &nearrow;
+       </span>
+      </button>
+     </form>
+    </article>
+    <article class="panel expense-list-panel">
+     <div class="panel-heading">
+      <div>
+       <h2>
+        여행 기록
+        <span class="place-count">
+         {{ expenses|length }}
+        </span>
+       </h2>
+      </div>
+     </div>
+     {% if expenses %}
+     <div class="expense-list">
+      {% for expense in expenses %}
+      <div class="expense-row">
+       <div class="expense-date">
+        {{ expense.expense_date[5:] }}
+       </div>
+       <div class="expense-detail">
+        <div class="expense-title-line">
+         <h3>
+          {{ expense.title }}
+         </h3>
+         <span class="expense-category">
+          {{ expense.category }}
+         </span>
+        </div>
+        {% if expense.place_name %}
+        <p class="expense-place-link">
+         장소 &middot;
+         <a href="{{ url_for('place_detail', trip_id=trip.id, place_id=expense.place_id) }}">
+          {{ expense.place_name }}
+         </a>
+        </p>
+        {% endif %}
+        <p class="expense-amount">
+         {{ '{:,.2f}'.format(expense.amount) }} {{ expense.currency }}
+        </p>
+        {% if expense.note %}
+        <p class="expense-note">
+         {{ expense.note }}
+        </p>
+        {% endif %}{% if expense.stored_file_name %}
+        <a class="attachment-link" href="{{ url_for('trip_expense_attachment', trip_id=trip.id, expense_id=expense.id) }}" rel="noopener" target="_blank">
+         📎 {{ expense.original_file_name }}
+        </a>
+        {% endif %}
+       </div>
+       <form action="{{ url_for('delete_trip_expense', trip_id=trip.id, expense_id=expense.id) }}" method="post" onsubmit="return confirm('이 기록을 삭제할까요?');">
+        <input name="return_to_expenses" type="hidden" value="1"/>
+        <button aria-label="기록 삭제" class="icon-button" title="기록 삭제" type="submit">
+         &times;
+        </button>
+       </form>
+      </div>
+      {% endfor %}
+     </div>
+     {% else %}
+     <div class="empty-state compact">
+      <h3>
+       아직 여행 기록이 없습니다
+      </h3>
+      <p>
+       예산을 설정하고 첫 지출이나 티켓을 추가해 보세요.
+      </p>
+     </div>
+     {% endif %}
+    </article>
+   </section>
+   <footer>
+    MADE FOR THE JOURNEY
+    <span>
+     ✳
+    </span>
+   </footer>
   </main>
-</body>
+  {% include '_preserve_scroll.html' %}
+ </body>
 </html>

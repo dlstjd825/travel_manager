@@ -32,9 +32,13 @@ def init_db():
         connection.executescript(schema.read().decode("utf-8"))
     # Keep existing local databases usable after adding Places API metadata.
     migrations = {
+        "users": {
+            "username": "TEXT",
+        },
         "trips": {
             "budget_amount": "REAL NOT NULL DEFAULT 0",
             "budget_currency": "TEXT NOT NULL DEFAULT 'EUR'",
+            "user_id": "INTEGER REFERENCES users(id) ON DELETE CASCADE",
         },
         "accommodations": {
             "google_place_id": "TEXT",
@@ -55,6 +59,23 @@ def init_db():
         for column, column_type in columns.items():
             if column not in existing:
                 connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
+    user_columns = {row["name"] for row in connection.execute("PRAGMA table_info(users)")}
+    if "email" in user_columns:
+        used_usernames = set()
+        for user in connection.execute("SELECT id, email, username FROM users ORDER BY id"):
+            if user["username"]:
+                used_usernames.add(user["username"].casefold())
+                continue
+            base_name = (user["email"] or "traveler").split("@", 1)[0][:24] or "traveler"
+            username = base_name
+            suffix = 1
+            while username.casefold() in used_usernames:
+                tail = f"{suffix}"
+                username = f"{base_name[:24-len(tail)]}{tail}"
+                suffix += 1
+            connection.execute("UPDATE users SET username = ? WHERE id = ?", (username, user["id"]))
+            used_usernames.add(username.casefold())
+    connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username COLLATE NOCASE)")
     connection.execute(
         "CREATE INDEX IF NOT EXISTS idx_trip_expenses_place ON trip_expenses(place_id, expense_date)"
     )

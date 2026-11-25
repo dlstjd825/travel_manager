@@ -1,32 +1,184 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>교통 · {{ trip.title }}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='css/trip.css') }}">
-</head>
-<body><main class="shell trip-module-page">
-  <header class="topbar"><a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">✳</span> roam<span class="brand-light">/</span>plan</a><a class="back-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">← {{ trip.title }} 개요</a></header>
-  {% set active_page = 'transport' %}
-  <section class="trip-section-heading"><div class="trip-section-heading-copy"><p class="trip-section-kicker">{{ trip.city }}</p><h1>교통</h1><p>교통편을 등록하면 일정 추천에 이동 시간을 반영합니다.</p></div></section>
-  {% include '_trip_nav.html' %}
-  {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="notices">{% for category, message in messages %}<p class="notice {{ category }}">{{ message }}</p>{% endfor %}</div>{% endif %}{% endwith %}
-  <section class="panel module-content transport-module">
-    <div class="panel-heading"><div><h2>등록한 티켓</h2><p class="overview-caption">{{ transport_legs|length }}건</p></div></div>
-    {% if transport_legs %}<div class="transport-leg-list">{% for leg in transport_legs %}<article class="transport-leg-card">
-      <div class="transport-leg-heading"><strong>{{ '항공' if leg.mode == 'flight' else '기차' }} · {{ '도착편' if leg.leg_type == 'arrival' else '출발편' }}</strong>{% if leg.carrier or leg.transport_number %}<span>{{ leg.carrier }} {{ leg.transport_number }}</span>{% endif %}</div>
-      <p class="transport-route">{{ leg.origin }} <span>→</span> {{ leg.destination }}</p><p class="transport-times">출발 {{ leg.departure_at.replace('T', ' ') }} · 도착 {{ leg.arrival_at.replace('T', ' ') }}</p>
-      {% if leg.stored_file_name %}<a class="transport-ticket-link" href="{{ url_for('transport_ticket', trip_id=trip.id, leg_id=leg.id) }}">📎 {{ leg.original_file_name }}</a>{% endif %}
-      <form method="post" action="{{ url_for('delete_transport_leg', trip_id=trip.id, leg_id=leg.id) }}" onsubmit="return confirm('이 교통편 정보를 삭제할까요?');"><button type="submit" class="icon-button" aria-label="교통편 삭제">×</button></form>
-    </article>{% endfor %}</div>{% else %}<div class="overview-empty"><p>등록한 교통편이 없습니다.</p></div>{% endif %}
-    <details class="transport-form-details"><summary>교통편 등록 <span aria-hidden="true">＋</span></summary>
-      <form class="trip-form transport-form" method="post" enctype="multipart/form-data" action="{{ url_for('add_transport_leg', trip_id=trip.id) }}">
-        <div class="transport-form-row"><label>교통수단<select name="mode"><option value="flight">항공</option><option value="train">기차</option></select></label><label>여정<select name="leg_type"><option value="arrival">도착편</option><option value="departure">출발편</option></select></label></div>
-        <div class="transport-form-row"><label>출발지<input name="origin" maxlength="180" placeholder="공항 또는 역" required></label><label>도착지<input name="destination" maxlength="180" placeholder="공항 또는 역" required></label></div>
-        <p class="form-hint transport-time-hint">출발 시각은 출발지, 도착 시각은 도착지의 현지 시각으로 입력하세요.</p>
-        <div class="transport-form-row"><label>출발 날짜와 시각<input type="datetime-local" name="departure_at" required></label><label>도착 날짜와 시각<input type="datetime-local" name="arrival_at" required></label></div>
-        <label>티켓 파일<input type="file" name="ticket" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf"><small>JPG, PNG, WEBP, HEIC, HEIF, PDF · 최대 32MB</small></label><button class="primary-button" type="submit">교통편 추가 <span>＋</span></button>
+ <head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1" name="viewport"/>
+  <title>
+   교통 &middot; {{ trip.title }}
+  </title>
+  <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/trip.css') }}" rel="stylesheet"/>
+ </head>
+ <body>
+  <main class="shell trip-module-page">
+   <header class="topbar">
+    <a class="brand" href="{{ url_for('index') }}">
+     <span class="brand-mark">
+      ✳
+     </span>
+     roam
+     <span class="brand-light">
+      /
+     </span>
+     plan
+    </a>
+    <a class="back-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">
+     &larr; {{ trip.title }} 개요
+    </a>
+   </header>
+   {% set active_page = 'transport' %}
+   <section class="trip-section-heading">
+    <div class="trip-section-heading-copy">
+     <p class="trip-section-kicker">
+      {{ trip.city }}
+     </p>
+     <h1>
+      교통
+     </h1>
+     <p>
+      교통편을 등록하면 일정 추천에 이동 시간을 반영합니다.
+     </p>
+    </div>
+   </section>
+   {% include '_trip_nav.html' %}
+  {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}
+   <div class="notices">
+    {% for category, message in messages %}
+    <p class="notice {{ category }}">
+     {{ message }}
+    </p>
+    {% endfor %}
+   </div>
+   {% endif %}{% endwith %}
+   <section class="panel module-content transport-module">
+    <div class="panel-heading">
+     <div>
+      <h2>
+       등록한 티켓
+       <span class="transport-count">{{ transport_legs|length }}건</span>
+      </h2>
+     </div>
+    </div>
+    {% if transport_legs %}
+    <div class="transport-leg-list">
+     {% for leg in transport_legs %}
+     <article class="transport-leg-card">
+      <div class="transport-leg-heading">
+       <span class="transport-mode-badge {{ 'flight' if leg.mode == 'flight' else 'train' }}">{{ '항공' if leg.mode == 'flight' else '기차' }}</span>
+       <span class="transport-leg-type {{ leg.leg_type }}">{{ '도착' if leg.leg_type == 'arrival' else '출발' }} 여정</span>
+       {% if leg.carrier or leg.transport_number %}
+       <span class="transport-carrier">
+        {{ leg.carrier }} {{ leg.transport_number }}
+       </span>
+       {% endif %}
+      </div>
+      <div class="transport-route">
+       <span class="transport-location">{{ leg.origin }}</span>
+       <span class="transport-route-arrow" aria-hidden="true">&rarr;</span>
+       <span class="transport-location">{{ leg.destination }}</span>
+      </div>
+      <div class="transport-time-grid">
+       <div class="transport-time-item"><span>출발</span><strong>{{ leg.departure_at.replace('T', ' ') }}</strong></div>
+       <div class="transport-time-item"><span>도착</span><strong>{{ leg.arrival_at.replace('T', ' ') }}</strong></div>
+      </div>
+      {% if leg.stored_file_name %}
+      <a class="transport-ticket-link" href="{{ url_for('transport_ticket', trip_id=trip.id, leg_id=leg.id) }}">
+       <span aria-hidden="true">📎</span> 티켓 다운로드 <small>{{ leg.original_file_name }}</small>
+      </a>
+      {% endif %}
+      <form action="{{ url_for('delete_transport_leg', trip_id=trip.id, leg_id=leg.id) }}" method="post" onsubmit="return confirm('이 교통편 정보를 삭제할까요?');">
+       <button aria-label="교통편 삭제" class="icon-button" type="submit">
+        &times;
+       </button>
       </form>
+     </article>
+     {% endfor %}
+    </div>
+    {% else %}
+    <div class="overview-empty">
+     <p>
+      등록한 교통편이 없습니다.
+     </p>
+    </div>
+    {% endif %}
+    <details class="transport-form-details">
+     <summary>
+      교통편 등록
+      <span aria-hidden="true">
+       ＋
+      </span>
+     </summary>
+     <form action="{{ url_for('add_transport_leg', trip_id=trip.id) }}" class="trip-form transport-form" enctype="multipart/form-data" method="post">
+      <div class="transport-form-row">
+       <label>
+        교통수단
+        <select name="mode">
+         <option value="flight">
+          항공
+         </option>
+         <option value="train">
+          기차
+         </option>
+        </select>
+       </label>
+       <label>
+        여정
+        <select name="leg_type">
+         <option value="arrival">
+          도착편
+         </option>
+         <option value="departure">
+          출발편
+         </option>
+        </select>
+       </label>
+      </div>
+      <div class="transport-form-row">
+       <label>
+        출발지
+        <input maxlength="180" name="origin" placeholder="공항 또는 역" required=""/>
+       </label>
+       <label>
+        도착지
+        <input maxlength="180" name="destination" placeholder="공항 또는 역" required=""/>
+       </label>
+      </div>
+      <p class="form-hint transport-time-hint">
+       출발 시각은 출발지, 도착 시각은 도착지의 현지 시각으로 입력하세요.
+      </p>
+      <div class="transport-form-row">
+       <label>
+        출발 날짜와 시각
+        <input name="departure_at" required="" type="datetime-local"/>
+       </label>
+       <label>
+        도착 날짜와 시각
+        <input name="arrival_at" required="" type="datetime-local"/>
+       </label>
+      </div>
+      <label>
+       티켓 파일
+       <input accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf" name="ticket" type="file"/>
+       <small>
+        JPG, PNG, WEBP, HEIC, HEIF, PDF &middot; 최대 32MB
+       </small>
+      </label>
+      <button class="primary-button" type="submit">
+       교통편 추가
+       <span>
+        ＋
+       </span>
+      </button>
+     </form>
     </details>
-  </section><footer>MADE FOR THE JOURNEY <span>✳</span></footer>
-</main></body></html>
+   </section>
+   <footer>
+    MADE FOR THE JOURNEY
+    <span>
+     ✳
+    </span>
+   </footer>
+  </main>
+  {% include '_preserve_scroll.html' %}
+ </body>
+</html>

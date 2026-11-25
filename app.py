@@ -3,10 +3,12 @@ import os
 import sqlite3
 import uuid
 import math
+import re
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, abort, flash, redirect, render_template, request, send_from_directory, url_for
+from flask import Flask, abort, flash, redirect, render_template, request, send_from_directory, session, url_for
+from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
 from database.db import get_db, init_app, query_db
@@ -18,7 +20,7 @@ def create_app(test_config=None):
     load_dotenv()
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_mapping(
-        SECRET_KEY="local-travel-planner-session",
+        SECRET_KEY=os.environ.get("SECRET_KEY") or os.urandom(32),
         DATABASE=app.instance_path + "/travel.db",
         MAX_CONTENT_LENGTH=32 * 1024 * 1024,
         EXPENSE_UPLOAD_FOLDER=os.path.join(app.instance_path, "expense_uploads"),
@@ -32,18 +34,95 @@ def create_app(test_config=None):
     )
     if test_config:
         app.config.update(test_config)
+    app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
 
     init_app(app)
     os.makedirs(app.config["EXPENSE_UPLOAD_FOLDER"], exist_ok=True)
     os.makedirs(app.config["TRANSPORT_UPLOAD_FOLDER"], exist_ok=True)
     os.makedirs(app.config["PLACE_PHOTO_UPLOAD_FOLDER"], exist_ok=True)
 
+    @app.before_request
+    def require_authenticated_user():
+        if request.endpoint in {"login", "register", "static"}:
+            return None
+        user_id = session.get("user_id")
+        if not user_id:
+            return redirect(url_for("login"))
+        trip_id = (request.view_args or {}).get("trip_id")
+        if trip_id is not None and query_db(
+            "SELECT id FROM trips WHERE id = ? AND user_id = ?", (trip_id, user_id), one=True
+        ) is None:
+            abort(404)
+        return None
+
+    @app.route("/register", methods=["GET", "POST"])
+    def register():
+        if session.get("user_id"):
+            return redirect(url_for("index"))
+        if request.method == "POST":
+            username = request.form.get("username", "").strip()
+            password = request.form.get("password", "")
+            if not re.fullmatch(r"[A-Za-z0-9가-힣_-]{3,24}", username):
+                flash("아이디는 한글, 영문, 숫자, _, - 조합으로 3~24자 입력해 주세요.", "error")
+            elif len(password) < 10:
+                flash("비밀번호는 10자 이상으로 입력해 주세요.", "error")
+            else:
+                db = get_db()
+                try:
+                    db.execute("BEGIN")
+                    existing_users = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+                    user_columns = {row["name"] for row in db.execute("PRAGMA table_info(users)")}
+                    if "email" in user_columns:
+                        cursor = db.execute(
+                            "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
+                            (username, f"{username}@local.invalid", generate_password_hash(password)),
+                        )
+                    else:
+                        cursor = db.execute(
+                            "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+                            (username, generate_password_hash(password)),
+                        )
+                    user_id = cursor.lastrowid
+                    if existing_users == 0:
+                        db.execute("UPDATE trips SET user_id = ? WHERE user_id IS NULL", (user_id,))
+                    db.commit()
+                    session.clear()
+                    session["user_id"] = user_id
+                    session["username"] = username
+                    return redirect(url_for("index"))
+                except sqlite3.IntegrityError:
+                    db.rollback()
+                    flash("이미 사용 중인 아이디입니다.", "error")
+        return render_template("auth.html", mode="register")
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        if session.get("user_id"):
+            return redirect(url_for("index"))
+        if request.method == "POST":
+            username = request.form.get("username", "").strip()
+            password = request.form.get("password", "")
+            user = query_db("SELECT * FROM users WHERE username = ? COLLATE NOCASE", (username,), one=True)
+            if user and check_password_hash(user["password_hash"], password):
+                session.clear()
+                session["user_id"] = user["id"]
+                session["username"] = user["username"]
+                return redirect(url_for("index"))
+            flash("아이디 또는 비밀번호를 확인해 주세요.", "error")
+        return render_template("auth.html", mode="login")
+
+    @app.post("/logout")
+    def logout():
+        session.clear()
+        return redirect(url_for("login"))
+
     @app.get("/")
     def index():
         trips = query_db(
             """SELECT t.*, COUNT(DISTINCT p.id) AS place_count
                FROM trips AS t LEFT JOIN places AS p ON p.trip_id = t.id
-               GROUP BY t.id ORDER BY t.start_date, t.id"""
+               WHERE t.user_id = ? GROUP BY t.id ORDER BY t.start_date, t.id""",
+            (session["user_id"],),
         )
         trips = [
             {
@@ -54,6 +133,124 @@ def create_app(test_config=None):
             for trip in trips
         ]
         return render_template("index.html", trips=trips, today=date.today().isoformat())
+
+    @app.get("/trips/merge")
+    def merge_trips_page():
+        trips = query_db(
+            """SELECT t.*, COUNT(DISTINCT p.id) AS place_count
+               FROM trips t LEFT JOIN places p ON p.trip_id = t.id
+               WHERE t.user_id = ? GROUP BY t.id ORDER BY t.start_date, t.id""",
+            (session["user_id"],),
+        )
+        return render_template("merge_trips.html", trips=trips)
+
+    @app.post("/trips/merge")
+    def merge_trips():
+        try:
+            selected_ids = list(dict.fromkeys(int(value) for value in request.form.getlist("trip_ids")))
+        except ValueError:
+            flash("병합할 여행을 확인해 주세요.", "error")
+            return redirect(url_for("merge_trips_page"))
+        if len(selected_ids) < 2:
+            flash("여행을 두 개 이상 선택해 주세요.", "error")
+            return redirect(url_for("merge_trips_page"))
+
+        placeholders = ",".join("?" for _ in selected_ids)
+        source_trips = query_db(
+            f"SELECT * FROM trips WHERE user_id = ? AND id IN ({placeholders}) ORDER BY start_date, id",
+            [session["user_id"], *selected_ids],
+        )
+        if len(source_trips) != len(selected_ids):
+            flash("선택한 여행 중 찾을 수 없는 여행이 있습니다.", "error")
+            return redirect(url_for("merge_trips_page"))
+
+        start_date = min(trip["start_date"] for trip in source_trips)
+        end_date = max(trip["end_date"] for trip in source_trips)
+        city_names = list(dict.fromkeys(trip["city"].strip() for trip in source_trips if trip["city"].strip()))
+        merged_city = " · ".join(city_names)[:100] or "여행"
+        merged_title = request.form.get("title", "").strip()[:100]
+        if not merged_title:
+            merged_title = " + ".join(trip["title"] for trip in source_trips)[:92] + " 통합 여행"
+
+        db = get_db()
+        try:
+            db.execute("BEGIN")
+            cursor = db.execute(
+                "INSERT INTO trips (user_id, title, city, start_date, end_date) VALUES (?, ?, ?, ?, ?)",
+                (session["user_id"], merged_title, merged_city, start_date, end_date),
+            )
+            merged_trip_id = cursor.lastrowid
+
+            merged_days = {}
+            total_days = (date.fromisoformat(end_date) - date.fromisoformat(start_date)).days + 1
+            for offset in range(total_days):
+                day_date = (date.fromisoformat(start_date) + timedelta(days=offset)).isoformat()
+                day_cursor = db.execute(
+                    "INSERT INTO itinerary_days (trip_id, day_number, date) VALUES (?, ?, ?)",
+                    (merged_trip_id, offset + 1, day_date),
+                )
+                merged_days[day_date] = day_cursor.lastrowid
+
+            merged_places_by_provider = {}
+            for source_trip in source_trips:
+                places = query_db("SELECT * FROM places WHERE trip_id = ? ORDER BY id", (source_trip["id"],))
+                place_id_map = {}
+                for place in places:
+                    provider_id = place["provider_place_id"]
+                    merged_place_id = merged_places_by_provider.get(provider_id) if provider_id else None
+                    if merged_place_id is None:
+                        place_cursor = db.execute(
+                            """INSERT INTO places
+                               (trip_id, provider_place_id, name, address, latitude, longitude, category,
+                                stay_duration, coordinates_updated_at)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            (merged_trip_id, provider_id, place["name"], place["address"], place["latitude"],
+                             place["longitude"], place["category"], place["stay_duration"],
+                             place["coordinates_updated_at"]),
+                        )
+                        merged_place_id = place_cursor.lastrowid
+                        if provider_id:
+                            merged_places_by_provider[provider_id] = merged_place_id
+                    place_id_map[place["id"]] = merged_place_id
+
+                source_days = query_db(
+                    "SELECT id, date FROM itinerary_days WHERE trip_id = ? ORDER BY day_number",
+                    (source_trip["id"],),
+                )
+                for source_day in source_days:
+                    merged_day_id = merged_days.get(source_day["date"])
+                    if merged_day_id is None:
+                        continue
+                    items = query_db(
+                        "SELECT place_id, sequence, start_time, is_locked FROM itinerary_items WHERE day_id = ? ORDER BY sequence",
+                        (source_day["id"],),
+                    )
+                    for item in items:
+                        merged_place_id = place_id_map.get(item["place_id"])
+                        if merged_place_id is None:
+                            continue
+                        already_added = db.execute(
+                            "SELECT 1 FROM itinerary_items WHERE day_id = ? AND place_id = ?",
+                            (merged_day_id, merged_place_id),
+                        ).fetchone()
+                        if already_added:
+                            continue
+                        sequence = db.execute(
+                            "SELECT COALESCE(MAX(sequence), 0) + 1 FROM itinerary_items WHERE day_id = ?",
+                            (merged_day_id,),
+                        ).fetchone()[0]
+                        db.execute(
+                            "INSERT INTO itinerary_items (day_id, place_id, sequence, start_time, is_locked) VALUES (?, ?, ?, ?, ?)",
+                            (merged_day_id, merged_place_id, sequence, item["start_time"], item["is_locked"]),
+                        )
+            db.commit()
+        except (sqlite3.Error, ValueError):
+            db.rollback()
+            flash("여행을 병합하지 못했습니다. 선택한 여행과 날짜를 확인해 주세요.", "error")
+            return redirect(url_for("merge_trips_page"))
+
+        flash(f"‘{merged_title}’ 여행을 만들고 날짜별 일정을 가져왔습니다. 원래 여행은 그대로 남아 있습니다.", "success")
+        return redirect(url_for("trip_detail", trip_id=merged_trip_id))
 
     @app.get("/trips/<int:trip_id>")
     def trip_detail(trip_id):
@@ -113,21 +310,15 @@ def create_app(test_config=None):
         journal_place_count = query_db(
             """SELECT COUNT(*) AS count FROM (
                  SELECT p.id FROM places p LEFT JOIN place_journals j ON j.place_id = p.id
-                 WHERE p.trip_id = ? AND (
-                   TRIM(COALESCE(j.information, '')) <> '' OR TRIM(COALESCE(j.thoughts, '')) <> ''
-                   OR EXISTS (SELECT 1 FROM place_photos ph WHERE ph.place_id = p.id)
-                 )
+                 WHERE p.trip_id = ? AND TRIM(COALESCE(j.information, '')) <> ''
                )""", (trip_id,), one=True,
-        )["count"]
-        trip_photo_count = query_db(
-            "SELECT COUNT(*) AS count FROM place_photos WHERE trip_id = ?", (trip_id,), one=True
         )["count"]
         start = date.fromisoformat(trip["start_date"])
         end = date.fromisoformat(trip["end_date"])
         return render_template(
             "trip.html", trip=trip, accommodation=accommodation, days=days, todos=todos,
             expense_summary=expense_summary, place_count=place_count, transport_count=transport_count,
-            journal_place_count=journal_place_count, trip_photo_count=trip_photo_count,
+            journal_place_count=journal_place_count,
             day_count=(end - start).days + 1, night_count=(end - start).days,
         )
 
@@ -182,17 +373,13 @@ def create_app(test_config=None):
             "SELECT information, thoughts, updated_at FROM place_journals WHERE place_id = ?",
             (place_id,), one=True,
         )
-        photos = query_db(
-            "SELECT * FROM place_photos WHERE place_id = ? ORDER BY id DESC",
-            (place_id,),
-        )
         expenses = query_db(
             "SELECT * FROM trip_expenses WHERE trip_id = ? AND place_id = ? ORDER BY expense_date DESC, id DESC",
             (trip_id, place_id),
         )
         return render_template(
             "place_detail.html", trip=trip, place=place, journal=journal,
-            photos=photos, expenses=expenses,
+            expenses=expenses,
             expense_categories=("숙박", "교통", "식비", "관광·티켓", "쇼핑", "기타"),
             currencies=("EUR", "USD", "KRW", "GBP", "CZK", "HUF", "CHF", "JPY"),
             budget_currency=trip["budget_currency"],
@@ -205,21 +392,15 @@ def create_app(test_config=None):
         if trip is None:
             abort(404)
         place_rows = query_db(
-            """SELECT p.id, p.name, p.address, p.category, j.information, j.thoughts
+            """SELECT p.id, p.name, p.address, j.information
                FROM places p LEFT JOIN place_journals j ON j.place_id = p.id
-               WHERE p.trip_id = ? AND (
-                 TRIM(COALESCE(j.information, '')) <> '' OR TRIM(COALESCE(j.thoughts, '')) <> ''
-                 OR EXISTS (SELECT 1 FROM place_photos ph WHERE ph.place_id = p.id)
-               ) ORDER BY p.name COLLATE NOCASE, p.id""",
+               WHERE p.trip_id = ? AND TRIM(COALESCE(j.information, '')) <> ''
+               ORDER BY p.name COLLATE NOCASE, p.id""",
             (trip_id,),
         )
         entries = []
         for row in place_rows:
             entry = dict(row)
-            entry["photos"] = query_db(
-                "SELECT id, original_file_name, caption FROM place_photos WHERE place_id = ? ORDER BY id DESC",
-                (row["id"],),
-            )
             entries.append(entry)
         return render_template("trip_journal.html", trip=trip, entries=entries)
 
@@ -874,8 +1055,8 @@ def create_app(test_config=None):
 
         connection = get_db()
         connection.execute(
-            "INSERT INTO trips (title, city, start_date, end_date) VALUES (?, ?, ?, ?)",
-            (title, city, start_date, end_date),
+            "INSERT INTO trips (user_id, title, city, start_date, end_date) VALUES (?, ?, ?, ?, ?)",
+            (session["user_id"], title, city, start_date, end_date),
         )
         connection.commit()
         flash(f"‘{title}’ 여행을 만들었습니다.", "success")
@@ -1519,7 +1700,7 @@ def _build_day_availability(trip, transport_legs, settings=None):
             available = event + timedelta(hours=buffer_hours)
             if available.date() != event.date() or available.time() >= arrival_latest_start or available.time() >= day_end:
                 blocked_reasons[day_number].append(
-                    f"{label} 도착 후 여유 시간이 늦어 그날은 비워 두었습니다."
+                    f"{label} 도착 후 여유 시간이 늦어 이날은 비워 두었습니다."
                 )
             else:
                 start_bounds[day_number] = max(

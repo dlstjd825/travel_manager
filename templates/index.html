@@ -1,34 +1,169 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>여행 플래너</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
-</head>
-<body>
+ <head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1" name="viewport"/>
+  <title>
+   여행 플래너
+  </title>
+  <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/index.css') }}" rel="stylesheet"/>
+ </head>
+ <body>
   <main class="shell">
-    <header class="topbar"><a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">✳</span> roam<span class="brand-light">/</span>plan</a><span class="local-tag">PERSONAL TRAVEL PLANNER</span></header>
-    <section class="hero">
-      <div class="hero-copy"><h1>여행의 순간을 <em>미리 그려보세요.</em></h1><p class="intro">여행을 만들고, 가고 싶은 장소를 모아 나만의 일정을 준비해 보세요.</p></div>
-    </section>
-
-    {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="notices">{% for category, message in messages %}<p class="notice {{ category }}">{{ message }}</p>{% endfor %}</div>{% endif %}{% endwith %}
-
-    <section class="content-grid">
-      <div class="section-heading"><div><h2>내 여행</h2></div><span class="count">{{ '%02d'|format(trips|length) }} TRIPS</span></div>
-      <div class="trip-list">
-        {% for trip in trips %}
-        <article class="trip-card"><div class="trip-date"><span>{{ trip.start_date[5:7] }}</span><small>{{ trip.start_date[0:4] }}</small></div><div class="trip-details"><h3><a class="trip-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">{{ trip.title }} ↗</a></h3><p>{{ trip.city }} <span>·</span> {{ trip.start_date }} — {{ trip.end_date }} <span>·</span> {{ trip.night_count }}박 {{ trip.day_count }}일</p><small>{{ trip.place_count }} PLACES SAVED</small></div><form method="post" action="{{ url_for('delete_trip', trip_id=trip.id) }}" onsubmit="return confirm('이 여행을 삭제할까요? 관련 장소와 일정도 함께 삭제됩니다.');"><button class="icon-button" aria-label="{{ trip.title }} 삭제" title="여행 삭제">×</button></form></article>
-        {% else %}
-        <div class="empty-state"><span class="empty-icon">↗</span><h3>첫 여행을 시작해 보세요</h3><p>아래에서 여행 정보를 입력하면 여기에 저장됩니다.</p></div>
-        {% endfor %}
+   <header class="topbar">
+    <a class="brand" href="{{ url_for('index') }}">
+     <span class="brand-mark">
+      ✳
+     </span>
+     roam
+     <span class="brand-light">
+      /
+     </span>
+     plan
+    </a>
+    <div class="account-controls">
+     <span>{{ session.get('username', '') }}</span>
+     <form action="{{ url_for('logout') }}" method="post">
+      <button type="submit">로그아웃</button>
+     </form>
+    </div>
+   </header>
+   <section class="hero">
+    <div class="hero-copy">
+     <h1>
+      여행의 순간을
+      <em>
+       미리 그려보세요.
+      </em>
+     </h1>
+     <p class="intro">
+      여행을 만들고, 가고 싶은 장소를 모아 나만의 일정을 준비해 보세요.
+     </p>
+    </div>
+   </section>
+   {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}
+   <div class="notices">
+    {% for category, message in messages %}
+    <p class="notice {{ category }}">
+     {{ message }}
+    </p>
+    {% endfor %}
+   </div>
+   {% endif %}{% endwith %}
+   <section class="content-grid">
+    <div class="section-heading">
+     <div>
+      <h2>
+       내 여행
+      </h2>
+     </div>
+     <div class="trip-heading-actions">
+      <span class="count">
+       {{ '%02d'|format(trips|length) }} TRIPS
+      </span>
+      {% if trips|length > 1 %}
+      <a class="secondary-button merge-trip-link" href="{{ url_for('merge_trips_page') }}">
+       여행 병합
+      </a>
+      {% endif %}
+     </div>
+    </div>
+    <div class="trip-list">
+     {% for trip in trips %}
+     <article class="trip-card">
+      <div class="trip-date">
+       <span>
+        {{ trip.start_date[5:7] }}
+       </span>
+       <small>
+        {{ trip.start_date[0:4] }}
+       </small>
       </div>
-      <div class="section-heading create-heading"><div><h2>새 여행 만들기</h2></div></div>
-      <aside class="create-card"><form method="post" action="{{ url_for('create_trip') }}" class="trip-form"><label>여행 이름<input name="title" placeholder="예: 여름 도쿄 여행" maxlength="100" required></label><label>여행 도시<input name="city" placeholder="예: Tokyo, Japan" maxlength="100" required></label><div class="date-row"><label>시작일<input name="start_date" type="date" value="{{ today }}" required></label><label>종료일<input name="end_date" type="date" value="{{ today }}" required></label></div><button class="primary-button" type="submit">여행 만들기 <span>↗</span></button></form></aside>
-    </section>
-    <footer>MADE FOR THE JOURNEY <span>✳</span></footer>
+      <div class="trip-details">
+       <h3>
+        <a class="trip-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">
+         {{ trip.title }} &nearrow;
+        </a>
+       </h3>
+       <p>
+        {{ trip.city }}
+        <span>
+         &middot;
+        </span>
+        {{ trip.start_date }} &mdash; {{ trip.end_date }}
+        <span>
+         &middot;
+        </span>
+        {{ trip.night_count }}박 {{ trip.day_count }}일
+       </p>
+       <small>
+        {{ trip.place_count }} PLACES SAVED
+       </small>
+      </div>
+      <form action="{{ url_for('delete_trip', trip_id=trip.id) }}" method="post" onsubmit="return confirm('이 여행을 삭제할까요? 관련 장소와 일정도 함께 삭제됩니다.');">
+       <button aria-label="{{ trip.title }} 삭제" class="icon-button" title="여행 삭제">
+        &times;
+       </button>
+      </form>
+     </article>
+     {% else %}
+     <div class="empty-state">
+      <span class="empty-icon">
+       &nearrow;
+      </span>
+      <h3>
+       첫 여행을 시작해 보세요
+      </h3>
+      <p>
+       아래에서 여행 정보를 입력하면 여기에 저장됩니다.
+      </p>
+     </div>
+     {% endfor %}
+    </div>
+    <div class="section-heading create-heading">
+     <div>
+      <h2>
+       새 여행 만들기
+      </h2>
+     </div>
+    </div>
+    <aside class="create-card">
+     <form action="{{ url_for('create_trip') }}" class="trip-form" method="post">
+      <label>
+       여행 이름
+       <input maxlength="100" name="title" placeholder="예: 여름 도쿄 여행" required=""/>
+      </label>
+      <label>
+       여행 도시
+       <input maxlength="100" name="city" placeholder="예: Tokyo, Japan" required=""/>
+      </label>
+      <div class="date-row">
+       <label>
+        시작일
+        <input name="start_date" required="" type="date" value="{{ today }}"/>
+       </label>
+       <label>
+        종료일
+        <input name="end_date" required="" type="date" value="{{ today }}"/>
+       </label>
+      </div>
+      <button class="primary-button" type="submit">
+       여행 만들기
+       <span>
+        &nearrow;
+       </span>
+      </button>
+     </form>
+    </aside>
+   </section>
+   <footer>
+    MADE FOR THE JOURNEY
+    <span>
+     ✳
+    </span>
+   </footer>
   </main>
-</body>
+  {% include '_preserve_scroll.html' %}
+ </body>
 </html>

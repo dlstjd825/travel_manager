@@ -1,32 +1,97 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>여행 기록 · {{ trip.title }}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/trip.css') }}">
-</head>
-<body>
+ <head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1" name="viewport"/>
+  <title>
+   여행 기록 &middot; {{ trip.title }}
+  </title>
+  <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/trip.css') }}" rel="stylesheet"/>
+ </head>
+ <body>
   <main class="shell trip-journal-page">
-    <header class="topbar"><a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">✳</span> roam<span class="brand-light">/</span>plan</a><a class="back-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">← 여행 개요</a></header>
-    <section class="trip-section-heading"><div class="trip-section-heading-copy"><p class="trip-section-kicker">{{ trip.city }}</p><h1>여행 기록 모아보기</h1><p>장소별로 남긴 사진과 기록을 모아봤어요.</p></div></section>
-    {% set active_page = 'overview' %}{% include '_trip_nav.html' %}
+   <header class="topbar">
+    <a class="brand" href="{{ url_for('index') }}">
+     <span class="brand-mark">
+      ✳
+     </span>
+     roam
+     <span class="brand-light">
+      /
+     </span>
+     plan
+    </a>
+    <a class="back-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">
+     &larr; 여행 개요
+    </a>
+   </header>
+   <section class="trip-section-heading">
+    <div class="trip-section-heading-copy">
+     <p class="trip-section-kicker">
+      {{ trip.city }}
+     </p>
+     <h1>
+      여행 기록 모아보기
+     </h1>
+     <p>
+      장소별로 저장한 정보를 모아봤어요.
+     </p>
+    </div>
+   </section>
+   {% set active_page = 'overview' %}{% include '_trip_nav.html' %}
 
     {% if entries %}
-      <section class="trip-journal-entry-list">
-        {% for entry in entries %}
-          <article class="panel trip-journal-entry">
-            <div class="panel-heading"><div><h2><a href="{{ url_for('place_detail', trip_id=trip.id, place_id=entry.id) }}">{{ entry.name }}</a></h2><p class="overview-caption">{{ entry.address or '주소 미입력' }}</p></div><a class="secondary-button" href="{{ url_for('place_detail', trip_id=trip.id, place_id=entry.id) }}">기록 보기</a></div>
-            {% if entry.information %}<section class="trip-journal-text"><h3>장소 정보</h3><p>{{ entry.information }}</p></section>{% endif %}
-            {% if entry.thoughts %}<section class="trip-journal-text"><h3>느낀 점</h3><p>{{ entry.thoughts }}</p></section>{% endif %}
-            {% if entry.photos %}<div class="trip-journal-photo-grid">{% for photo in entry.photos %}<figure class="place-photo-card"><a href="{{ url_for('place_photo', trip_id=trip.id, place_id=entry.id, photo_id=photo.id) }}" target="_blank" rel="noopener"><img src="{{ url_for('place_photo', trip_id=trip.id, place_id=entry.id, photo_id=photo.id) }}" alt="{{ photo.caption or photo.original_file_name }}" loading="lazy"></a><figcaption><span>{{ photo.caption or photo.original_file_name }}</span></figcaption></figure>{% endfor %}</div>{% endif %}
-          </article>
-        {% endfor %}
-      </section>
-    {% else %}
-      <section class="panel trip-journal-empty"><div class="overview-empty"><p>아직 모아볼 여행 기록이 없습니다.</p><a href="{{ url_for('trip_places', trip_id=trip.id) }}">장소를 열어 사진과 기록 추가하기 →</a></div></section>
-    {% endif %}
-    <footer>MADE FOR THE JOURNEY <span>✳</span></footer>
+   <section class="trip-journal-entry-list">
+    {% for entry in entries %}
+    <article class="panel trip-journal-entry">
+     <div class="panel-heading">
+      <div>
+       <h2>
+        <a href="{{ url_for('place_detail', trip_id=trip.id, place_id=entry.id) }}">
+         {{ entry.name }}
+        </a>
+       </h2>
+       <p class="overview-caption">
+        {{ entry.address or '주소 미입력' }}
+       </p>
+      </div>
+      <a class="secondary-button" href="{{ url_for('place_detail', trip_id=trip.id, place_id=entry.id) }}">
+       기록 보기
+      </a>
+     </div>
+     {% if entry.information %}
+     <section class="trip-journal-text">
+      <h3>
+       장소 정보
+      </h3>
+      <p>
+       {{ entry.information }}
+      </p>
+     </section>
+     {% endif %}
+    </article>
+    {% endfor %}
+   </section>
+   {% else %}
+   <section class="panel trip-journal-empty">
+    <div class="overview-empty">
+     <p>
+       아직 저장된 장소 정보가 없습니다.
+     </p>
+     <a href="{{ url_for('trip_places', trip_id=trip.id) }}">
+       장소를 열어 정보 추가하기 &rarr;
+     </a>
+    </div>
+   </section>
+   {% endif %}
+   <footer>
+    MADE FOR THE JOURNEY
+    <span>
+     ✳
+    </span>
+   </footer>
   </main>
-</body>
+  {% include '_preserve_scroll.html' %}
+ </body>
 </html>

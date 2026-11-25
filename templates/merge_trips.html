@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ko">
+ <head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1" name="viewport"/>
+  <title>
+   여행 병합 &middot; 여행 플래너
+  </title>
+  <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/index.css') }}" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/trip.css') }}" rel="stylesheet"/>
+ </head>
+ <body>
+  <main class="shell merge-trips-page">
+   <header class="topbar">
+    <a class="brand" href="{{ url_for('index') }}">
+     <span class="brand-mark">
+      ✳
+     </span>
+     roam
+     <span class="brand-light">
+      /
+     </span>
+     plan
+    </a>
+    <a class="back-link" href="{{ url_for('index') }}">
+     &larr; 내 여행
+    </a>
+   </header>
+   <section class="trip-section-heading">
+    <div class="trip-section-heading-copy">
+     <p class="trip-section-kicker">
+      MULTI-COUNTRY TRIP
+     </p>
+     <h1>
+      여행 병합
+     </h1>
+     <p>
+      여러 국가별 여행을 하나의 큰 여행으로 묶어 보세요.
+     </p>
+    </div>
+   </section>
+   {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}
+   <div class="notices">
+    {% for category, message in messages %}
+    <p class="notice {{ category }}">
+     {{ message }}
+    </p>
+    {% endfor %}
+   </div>
+   {% endif %}{% endwith %}
+    {% if trips|length >= 2 %}
+   <form action="{{ url_for('merge_trips') }}" class="panel merge-trips-form" method="post">
+    <div class="panel-heading">
+     <div>
+      <h2>
+       병합할 여행 선택
+      </h2>
+      <p class="overview-caption">
+       두 개 이상 선택하면 전체 기간에 맞춰 날짜별 일정과 장소를 가져옵니다.
+      </p>
+     </div>
+    </div>
+    <div class="merge-trip-options">
+     {% for trip in trips %}
+     <label class="merge-trip-option">
+      <input name="trip_ids" type="checkbox" value="{{ trip.id }}"/>
+      <span class="merge-trip-option-content">
+       <strong>
+        {{ trip.title }}
+       </strong>
+       <small>
+        {{ trip.city }} &middot; {{ trip.start_date }} &mdash; {{ trip.end_date }} &middot; <span class="count-value">{{ trip.place_count }}곳</span>
+       </small>
+      </span>
+     </label>
+     {% endfor %}
+    </div>
+    <label class="merge-title-label">
+     새 여행 이름
+     <input maxlength="100" name="title" placeholder="비워 두면 선택한 여행 이름으로 만듭니다."/>
+    </label>
+    <p class="merge-trip-note">
+     새 여행을 만들며 날짜별 장소와 방문 순서를 가져옵니다. 원래 여행은 그대로 유지됩니다. 숙소, 교통편 티켓, 지출, 장소 사진과 기록은 복사되지 않습니다.
+    </p>
+    <button class="primary-button" type="submit">
+     선택한 여행 병합
+     <span>
+      &nearrow;
+     </span>
+    </button>
+   </form>
+   {% else %}
+   <section class="panel merge-trips-form">
+    <div class="overview-empty">
+     <p>
+      병합하려면 저장된 여행이 두 개 이상 필요합니다.
+     </p>
+     <a href="{{ url_for('index') }}">
+      내 여행으로 돌아가기 &rarr;
+     </a>
+    </div>
+   </section>
+   {% endif %}
+   <footer>
+    MADE FOR THE JOURNEY
+    <span>
+     ✳
+    </span>
+   </footer>
+  </main>
+  {% include '_preserve_scroll.html' %}
+ </body>
+</html>

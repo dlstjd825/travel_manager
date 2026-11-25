@@ -428,7 +428,8 @@
   width: auto;
   min-width: 55px;
   padding: 0 10px;
-  font-size: 12px;
+  font-size: 20px;
+  font-weight: bolder;
   letter-spacing: 0;
 }
 
