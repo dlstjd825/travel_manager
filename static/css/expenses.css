@@ -19,16 +19,6 @@
   font: 600 14px "DM Sans","Noto Sans KR",sans-serif;
 }
 
-.topbar-links {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-
-.topbar-links a {
-  text-decoration: none;
-}
-
 .expenses-hero {
   min-height: 0;
   display: flex;

@@ -6,12 +6,12 @@ from services.distance import haversine_km
 _DEFAULT_ENDPOINT = object()
 
 
-def recommend_itinerary(places, accommodation, start_date, day_count):
+def recommend_itinerary(places, accommodation, start_date, day_count, day_availability=None):
     """Assign nearby place groups to days without optimizing stop order."""
     if day_count < 1:
         return []
     start = date.fromisoformat(start_date)
-    groups = cluster_places(places, accommodation, max_groups=day_count)
+    availability = day_availability or {}
     days = [
         {
             "day_number": number,
@@ -19,17 +19,30 @@ def recommend_itinerary(places, accommodation, start_date, day_count):
             "group_numbers": [],
             "places": [],
             "route_distance_km": 0.0,
+            **availability.get(number, {}),
         }
         for number in range(1, day_count + 1)
     ]
+    eligible_days = [day for day in days if day.get("is_available", True)]
+    if not eligible_days:
+        return days
+
+    groups = cluster_places(places, accommodation, max_groups=len(eligible_days))
+    # Give full days the larger geographic clusters; shorter travel windows
+    # receive smaller clusters where possible.
+    groups = sorted(groups, key=lambda group: (-len(group["members"]), group["number"]))
+    eligible_days = sorted(
+        eligible_days,
+        key=lambda day: (-day.get("available_hours", 12), day["day_number"]),
+    )
 
     # Each geographic group is assigned to a travel day; when there are fewer
     # distinct locations than dates, the remaining dates stay open for flexibility.
     for index, group in enumerate(groups):
-        if index < day_count:
-            day = days[index]
+        if index < len(eligible_days):
+            day = eligible_days[index]
         else:
-            day = min(days, key=lambda candidate: (
+            day = min(eligible_days, key=lambda candidate: (
                 len(candidate["places"]), candidate["day_number"]
             ))
         day["group_numbers"].append(group["number"])
@@ -41,7 +54,7 @@ def recommend_itinerary(places, accommodation, start_date, day_count):
     for place in places:
         if place["id"] in group_place_ids:
             continue
-        day = min(days, key=lambda candidate: (
+        day = min(eligible_days, key=lambda candidate: (
             len(candidate["places"]), candidate["day_number"]
         ))
         day["places"].append(place)

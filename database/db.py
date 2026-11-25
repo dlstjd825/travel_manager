@@ -39,6 +39,8 @@ def init_db():
         "accommodations": {
             "google_place_id": "TEXT",
             "coordinates_updated_at": "TEXT",
+            "check_in_date": "TEXT",
+            "check_out_date": "TEXT",
         },
         "places": {
             "coordinates_updated_at": "TEXT",

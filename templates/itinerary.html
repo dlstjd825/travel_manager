@@ -13,6 +13,21 @@
       <div><h1>{{ trip.title }}</h1><p class="intro">{{ trip.start_date }} — {{ trip.end_date }} · {{ night_count }}박 {{ day_count }}일</p></div>
       <div class="itinerary-actions"><span id="itinerary-save-status" role="status">장소와 날짜를 드래그해 순서를 바꿀 수 있어요.</span>{% if not accommodation %}<a class="secondary-button itinerary-accommodation-link" href="{{ url_for('trip_detail', trip_id=trip.id, edit_accommodation=1) }}#stay-panel">숙소 추가</a>{% endif %}<form method="post" action="{{ url_for('recommend_trip_itinerary', trip_id=trip.id) }}"><button class="primary-button" type="submit">일정 다시 추천 <span>↻</span></button></form></div>
     </section>
+    <details class="recommendation-settings">
+      <summary>일정 추천 시간 설정</summary>
+      <form method="post" action="{{ url_for('save_recommendation_settings', trip_id=trip.id) }}">
+        <p>교통편 여유 시간과 추천 가능한 하루 시간대를 정합니다. 도착일 기준 시각 이후에 추천 시작 시간이 걸리거나 출발일 기준 시각 이전에 일정이 끝나면 그날은 비워 둡니다.</p>
+        <div class="recommendation-settings-grid">
+          <label>항공 도착·출발 여유 시간 (시간)<input type="number" name="flight_buffer_hours" min="0" max="12" step="0.5" value="{{ recommendation_settings.flight_buffer_hours }}" required></label>
+          <label>기차 도착·출발 여유 시간 (시간)<input type="number" name="train_buffer_hours" min="0" max="12" step="0.5" value="{{ recommendation_settings.train_buffer_hours }}" required></label>
+          <label>하루 추천 시작<input type="time" name="day_start_time" value="{{ recommendation_settings.day_start_time }}" required></label>
+          <label>하루 추천 종료<input type="time" name="day_end_time" value="{{ recommendation_settings.day_end_time }}" required></label>
+          <label>도착일 추천 시작이 이 시각 이후면 하루 비우기<input type="time" name="arrival_latest_start" value="{{ recommendation_settings.arrival_latest_start }}" required></label>
+          <label>출발 전 일정 종료 기준<input type="time" name="departure_earliest_cutoff" value="{{ recommendation_settings.departure_earliest_cutoff }}" required></label>
+        </div>
+        <button class="secondary-button" type="submit">시간 설정 저장</button>
+      </form>
+    </details>
     {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="notices">{% for category, message in messages %}<p class="notice {{ category }}">{{ message }}</p>{% endfor %}</div>{% endif %}{% endwith %}
 
     <div class="itinerary-layout">
@@ -22,12 +37,12 @@
       <section class="day-list">
       {% for day in days %}
       <article class="day-card" data-day-card>
-        <header class="day-header"><div class="day-badge">DAY <strong>{{ '%02d'|format(day.day_number) }}</strong></div><div class="day-heading"><h2>{{ day.date }}</h2><p>{% if day['items'] %}{{ day['items']|length }}곳 방문{% else %}일정 여유일{% endif %}</p></div>{% if day['items']|length > 1 %}<form class="day-optimize-form" method="post" action="{{ url_for('optimize_itinerary_day', trip_id=trip.id, day_number=day.day_number) }}"><button class="secondary-button" type="submit">방문 순서 추천</button></form>{% endif %}<button type="button" class="day-drag-handle" draggable="true" aria-label="날짜 순서 이동" title="날짜 순서 이동">⠿</button></header>
-        <div class="day-dropzone" data-day-number="{{ day.day_number }}" data-date="{{ day.date }}" data-optimize-url="{{ url_for('optimize_itinerary_day', trip_id=trip.id, day_number=day.day_number) }}">
+        <header class="day-header"><div class="day-badge">DAY <strong>{{ '%02d'|format(day.day_number) }}</strong></div><div class="day-heading"><h2>{{ day.date }}</h2><p>{% if day['items'] %}{{ day['items']|length }}곳 방문{% else %}일정 여유일{% endif %}{% if day.accommodation_status %}<span class="day-stay-status"> · 숙소 {{ day.accommodation_status }}</span>{% endif %}</p>{% if day.blocked_reason %}<small class="day-availability-note is-blocked">{{ day.blocked_reason }}</small>{% elif day.availability_note %}<small class="day-availability-note">{{ day.availability_note }}</small>{% endif %}</div><a class="secondary-button day-detail-link" href="{{ url_for('itinerary_day_detail', trip_id=trip.id, day_number=day.day_number) }}">세부 일정 세우기</a><button type="button" class="day-drag-handle" draggable="true" aria-label="날짜 순서 이동" title="날짜 순서 이동">⠿</button></header>
+        <div class="day-dropzone" data-day-number="{{ day.day_number }}" data-date="{{ day.date }}" data-detail-url="{{ url_for('itinerary_day_detail', trip_id=trip.id, day_number=day.day_number) }}">
           <ol class="itinerary-stops">{% for item in day['items'] %}
             <li class="itinerary-stop {{ 'is-locked' if item.is_locked else '' }}" draggable="{{ 'false' if item.is_locked else 'true' }}" data-place-id="{{ item.place_id }}" tabindex="0" role="button" aria-label="{{ item.name }} 지도에서 보기"><span class="drag-handle" aria-hidden="true">⠿</span><span class="place-pin category-pin {{ 'restaurant-pin' if item.category == 'restaurant' else 'attraction-pin' }}" role="img" aria-label="{{ '식당' if item.category == 'restaurant' else '관광지' }}">{% if item.category == 'restaurant' %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v7m-3-7v4a3 3 0 0 0 6 0V3M6 10v11m10-18v18m0-18c3 2 4 5 4 8h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{% else %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-8h6v8M3 9h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{% endif %}</span><div class="stop-details"><h3>{{ item.name }}</h3><p>{{ item.address or '주소 미입력' }}</p>{% if item.latitude is none %}<small class="location-warning">좌표 없음 · 장소 등록 화면에서 위치를 선택해 주세요</small>{% endif %}</div><form method="post" action="{{ url_for('toggle_itinerary_place_lock', trip_id=trip.id, place_id=item.place_id) }}" class="itinerary-row-action itinerary-lock-form"><button type="submit" class="itinerary-lock-button {{ 'locked' if item.is_locked else '' }}" aria-label="{{ item.name }} {{ '고정 해제' if item.is_locked else '순서 고정' }}" title="{{ '고정 해제' if item.is_locked else '순서 고정' }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="{% if item.is_locked %}M7 10V7a5 5 0 0 1 10 0v3{% else %}M8 10V7a5 5 0 0 1 9.6-1.5{% endif %}M6 10h12v11H6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></form><form method="post" action="{{ url_for('remove_itinerary_place', trip_id=trip.id, place_id=item.place_id) }}" class="itinerary-row-action itinerary-delete-form" onsubmit="return confirm('{{ item.name }}을(를) 일정에서 제외할까요?');"><button type="submit" class="icon-button" aria-label="{{ item.name }} 일정에서 제거" title="일정에서 제거">×</button></form></li>
           {% endfor %}</ol>
-          <div class="free-day" {% if day['items'] %}hidden{% endif %}><span>☼</span><p>이 날은 비워 두었습니다. 장소를 여기로 옮길 수 있어요.</p></div>
+          <div class="free-day" {% if day['items'] %}hidden{% endif %}><span>☼</span><p>{% if day.blocked_reason %}{{ day.blocked_reason }}{% else %}이 날은 비워 두었습니다. 장소를 여기로 옮길 수 있어요.{% endif %}</p></div>
         </div>
       </article>
       {% endfor %}
@@ -68,7 +83,9 @@
         const title = document.createElement('strong');
         title.textContent = point.name;
         const details = document.createElement('p');
-        details.textContent = point.address || '';
+        details.textContent = point.kind === 'accommodation' && point.check_in_date
+          ? `${point.address || ''}${point.address ? ' · ' : ''}${point.check_in_date} – ${point.check_out_date}`
+          : (point.address || '');
         content.append(title, details);
         infoWindow.setContent(content);
         infoWindow.open({map, anchor: marker});
@@ -96,7 +113,9 @@
         const bounds = new LatLngBounds();
         let visible = 0;
         markers.forEach(({point, marker}) => {
-          const show = point.kind === 'accommodation' || day === 'all' || String(point.day_number) === day;
+          const show = point.kind === 'accommodation'
+            ? (day === 'all' || !(point.check_in_date && point.check_out_date) || point.stay_day_numbers.includes(Number(day)))
+            : (day === 'all' || String(point.day_number) === day);
           marker.map = show ? map : null;
           if (point.kind !== 'accommodation') {
             const dayMarker = day === 'all';
@@ -167,7 +186,7 @@
         zone,
         dayNumber: zone.dataset.dayNumber,
         date: zone.dataset.date,
-        optimizeUrl: zone.dataset.optimizeUrl,
+        detailUrl: zone.dataset.detailUrl,
       }));
     }
 
@@ -178,11 +197,11 @@
         const dayDate = calendarDates[index];
         zone.dataset.dayNumber = String(dayNumber);
         zone.dataset.date = dayDate;
-        zone.dataset.optimizeUrl = zone.dataset.optimizeUrl.replace(/\/day\/\d+\/optimize$/, `/day/${dayNumber}/optimize`);
+        zone.dataset.detailUrl = zone.dataset.detailUrl.replace(/\/day\/\d+$/, `/day/${dayNumber}`);
         const card = zone.closest('.day-card');
         card.querySelector('.day-badge strong').textContent = String(dayNumber).padStart(2, '0');
         card.querySelector('.day-heading h2').textContent = dayDate;
-        updateOptimizeButton(zone);
+        updateDayDetailLink(zone);
       });
       updateEmptyDays();
     }
@@ -194,24 +213,10 @@
       });
     }
 
-    function updateOptimizeButton(zone) {
+    function updateDayDetailLink(zone) {
       const card = zone.closest('.day-card');
-      const count = zone.querySelectorAll('.itinerary-stop').length;
-      let form = card.querySelector('.day-optimize-form');
-      if (count > 1 && !form) {
-        form = document.createElement('form');
-        form.className = 'day-optimize-form';
-        form.method = 'post';
-        const button = document.createElement('button');
-        button.className = 'secondary-button';
-        button.type = 'submit';
-        button.textContent = '세부 일정 추천';
-        form.append(button);
-        card.querySelector('.day-header').insertBefore(form, card.querySelector('.day-drag-handle'));
-      } else if (count < 2 && form) {
-        form.remove();
-      }
-      if (form) form.action = zone.dataset.optimizeUrl;
+      const link = card.querySelector('.day-detail-link');
+      if (link) link.href = zone.dataset.detailUrl;
     }
 
     function placeBeforeElement(list, y) {
@@ -249,20 +254,19 @@
           const heading = zone.closest('.day-card').querySelector('.day-heading p');
           const itemCount = zone.querySelectorAll('.itinerary-stop').length;
           heading.textContent = itemCount ? `${itemCount}곳 방문` : '일정 여유일';
-          updateOptimizeButton(zone);
         });
         statusNode.textContent = '일정을 저장했어요.';
       } catch (error) {
         if (previousDayOrder) previousDayOrder.forEach((card) => dayList.append(card));
-        if (previousDayMeta) previousDayMeta.forEach(({zone, dayNumber, date, optimizeUrl}) => {
+        if (previousDayMeta) previousDayMeta.forEach(({zone, dayNumber, date, detailUrl}) => {
           zone.dataset.dayNumber = dayNumber;
           zone.dataset.date = date;
-          zone.dataset.optimizeUrl = optimizeUrl;
+          zone.dataset.detailUrl = detailUrl;
           const card = zone.closest('.day-card');
           card.querySelector('.day-badge strong').textContent = String(dayNumber).padStart(2, '0');
           card.querySelector('.day-heading h2').textContent = date;
-          const form = card.querySelector('.day-optimize-form');
-          if (form) form.action = optimizeUrl;
+          const link = card.querySelector('.day-detail-link');
+          if (link) link.href = detailUrl;
         });
         refreshZones();
         previousLayout.forEach(({zone, placeIds}) => {

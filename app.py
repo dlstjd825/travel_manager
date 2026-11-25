@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time as datetime_time, timedelta, timezone
 import os
 import sqlite3
 import uuid
@@ -20,8 +20,9 @@ def create_app(test_config=None):
     app.config.from_mapping(
         SECRET_KEY="local-travel-planner-session",
         DATABASE=app.instance_path + "/travel.db",
-        MAX_CONTENT_LENGTH=16 * 1024 * 1024,
+        MAX_CONTENT_LENGTH=32 * 1024 * 1024,
         EXPENSE_UPLOAD_FOLDER=os.path.join(app.instance_path, "expense_uploads"),
+        TRANSPORT_UPLOAD_FOLDER=os.path.join(app.instance_path, "transport_tickets"),
         GOOGLE_MAPS_API_KEY=os.environ.get("GOOGLE_MAPS_API_KEY", ""),
         GOOGLE_MAPS_BROWSER_API_KEY=(
             os.environ.get("GOOGLE_MAPS_BROWSER_API_KEY")
@@ -33,6 +34,7 @@ def create_app(test_config=None):
 
     init_app(app)
     os.makedirs(app.config["EXPENSE_UPLOAD_FOLDER"], exist_ok=True)
+    os.makedirs(app.config["TRANSPORT_UPLOAD_FOLDER"], exist_ok=True)
 
     @app.get("/")
     def index():
@@ -80,6 +82,10 @@ def create_app(test_config=None):
                         MIN(d.day_number), p.name COLLATE NOCASE""",
             (trip_id,),
         )
+        transport_legs = query_db(
+            "SELECT * FROM trip_transport_legs WHERE trip_id = ? ORDER BY departure_at, id",
+            (trip_id,),
+        )
         scheduled_rows = query_db(
             """SELECT ii.place_id, d.day_number FROM itinerary_items AS ii
                JOIN itinerary_days AS d ON d.id = ii.day_id WHERE d.trip_id = ?""",
@@ -98,6 +104,7 @@ def create_app(test_config=None):
             place_search_category="attraction",
             accommodation_edit_open=request.args.get("edit_accommodation") == "1",
             place_days=place_days,
+            transport_legs=transport_legs,
         )
 
     @app.get("/trips/<int:trip_id>/expenses")
@@ -167,11 +174,15 @@ def create_app(test_config=None):
         original_name = None
         stored_name = None
         if uploaded and uploaded.filename:
-            original_name = secure_filename(uploaded.filename) or "첨부파일"
-            extension = Path(original_name).suffix.lower()
-            if extension not in {".jpg", ".jpeg", ".png", ".webp", ".pdf"}:
-                flash("영수증 또는 티켓은 JPG, PNG, WEBP, PDF 파일로 첨부해 주세요.", "error")
+            extension = Path(uploaded.filename).suffix.lower()
+            if extension not in {".jpg", ".jpeg", ".png", ".webp", ".pdf", ".heic", ".heif"}:
+                flash("영수증 또는 티켓은 JPG, PNG, WEBP, HEIC, HEIF, PDF 파일로 첨부해 주세요.", "error")
                 return redirect(url_for("trip_expenses", trip_id=trip_id))
+            safe_name = secure_filename(uploaded.filename)
+            original_name = (
+                safe_name if Path(safe_name).suffix.lower() == extension
+                else f"첨부파일{extension}"
+            )
             stored_name = f"{uuid.uuid4().hex}{extension}"
             uploaded.save(os.path.join(app.config["EXPENSE_UPLOAD_FOLDER"], stored_name))
         try:
@@ -253,19 +264,34 @@ def create_app(test_config=None):
                 "day_number": day["day_number"],
                 "date": day["date"],
                 "items": items,
+                "accommodation_status": _accommodation_status(accommodation, day["date"]),
             })
         scheduled_place_ids = set(place_days)
         unscheduled_places = [place for place in places if place["id"] not in scheduled_place_ids]
+        map_points = _map_points(accommodation, places, place_days, place_sequences)
+        stay_day_numbers = [day["day_number"] for day in days if day["accommodation_status"]]
+        for point in map_points:
+            if point["kind"] == "accommodation":
+                point["stay_day_numbers"] = stay_day_numbers
+        transport_legs = query_db(
+            "SELECT * FROM trip_transport_legs WHERE trip_id = ? ORDER BY departure_at, id",
+            (trip_id,),
+        )
+        settings = _get_recommendation_settings(trip_id)
+        day_availability = _build_day_availability(trip, transport_legs, settings)
+        for day in days:
+            day.update(day_availability[day["day_number"]])
         return render_template(
             "itinerary.html", trip=trip, days=days, has_itinerary=bool(day_rows),
             accommodation=accommodation,
-            map_points=_map_points(accommodation, places, place_days, place_sequences),
+            map_points=map_points,
             map_total=len(places) + (1 if accommodation else 0),
             map_days=list(range(1, (date.fromisoformat(trip["end_date"]) - date.fromisoformat(trip["start_date"])).days + 2)),
             maps_enabled=bool(app.config.get("GOOGLE_MAPS_BROWSER_API_KEY")),
             night_count=(date.fromisoformat(trip["end_date"]) - date.fromisoformat(trip["start_date"])).days,
             day_count=(date.fromisoformat(trip["end_date"]) - date.fromisoformat(trip["start_date"])).days + 1,
             unscheduled_places=unscheduled_places,
+            recommendation_settings=settings,
         )
 
     @app.post("/trips/<int:trip_id>/recommend-itinerary")
@@ -285,7 +311,16 @@ def create_app(test_config=None):
         start = date.fromisoformat(trip["start_date"])
         end = date.fromisoformat(trip["end_date"])
         day_count = (end - start).days + 1
-        days = recommend_itinerary(places, accommodation, trip["start_date"], day_count)
+        transport_legs = query_db(
+            "SELECT * FROM trip_transport_legs WHERE trip_id = ? ORDER BY departure_at, id",
+            (trip_id,),
+        )
+        day_availability = _build_day_availability(
+            trip, transport_legs, _get_recommendation_settings(trip_id)
+        )
+        days = recommend_itinerary(
+            places, accommodation, trip["start_date"], day_count, day_availability
+        )
 
         db = get_db()
         try:
@@ -307,8 +342,91 @@ def create_app(test_config=None):
             db.rollback()
             flash("일정을 저장하지 못했습니다. 다시 시도해 주세요.", "error")
             return redirect(url_for("trip_detail", trip_id=trip_id))
-        flash("여행 일정을 날짜별로 추천하고 저장했습니다.", "success")
+        if not any(day.get("is_available", True) for day in days):
+            flash("교통편 여유 시간을 고려해 모든 날짜를 비워 두었습니다. 장소는 날짜 미정으로 남았습니다.", "success")
+        else:
+            flash("여행 일정을 날짜별로 추천하고 저장했습니다.", "success")
         return redirect(url_for("trip_itinerary", trip_id=trip_id))
+
+    @app.post("/trips/<int:trip_id>/recommendation-settings")
+    def save_recommendation_settings(trip_id):
+        if query_db("SELECT id FROM trips WHERE id = ?", (trip_id,), one=True) is None:
+            abort(404)
+        try:
+            flight_buffer = float(request.form.get("flight_buffer_hours", "4"))
+            train_buffer = float(request.form.get("train_buffer_hours", "2"))
+            if not (0 <= flight_buffer <= 12 and 0 <= train_buffer <= 12):
+                raise ValueError
+            day_start = datetime.strptime(request.form.get("day_start_time", ""), "%H:%M").time()
+            day_end = datetime.strptime(request.form.get("day_end_time", ""), "%H:%M").time()
+            arrival_limit = datetime.strptime(request.form.get("arrival_latest_start", ""), "%H:%M").time()
+            departure_limit = datetime.strptime(request.form.get("departure_earliest_cutoff", ""), "%H:%M").time()
+            if day_start >= day_end or not (day_start <= arrival_limit <= day_end) or not (day_start <= departure_limit <= day_end):
+                raise ValueError
+        except (TypeError, ValueError):
+            flash("시간을 확인해 주세요. 하루 추천 시작은 종료보다 앞서야 하며 도착·출발 기준 시각은 추천 시간 안에 있어야 합니다.", "error")
+            return redirect(url_for("trip_itinerary", trip_id=trip_id))
+        get_db().execute(
+            """INSERT INTO trip_recommendation_settings
+               (trip_id, flight_buffer_hours, train_buffer_hours, day_start_time, day_end_time,
+                arrival_latest_start, departure_earliest_cutoff)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(trip_id) DO UPDATE SET
+                flight_buffer_hours=excluded.flight_buffer_hours,
+                train_buffer_hours=excluded.train_buffer_hours,
+                day_start_time=excluded.day_start_time,
+                day_end_time=excluded.day_end_time,
+                arrival_latest_start=excluded.arrival_latest_start,
+                departure_earliest_cutoff=excluded.departure_earliest_cutoff""",
+            (trip_id, flight_buffer, train_buffer, day_start.strftime("%H:%M"),
+             day_end.strftime("%H:%M"), arrival_limit.strftime("%H:%M"),
+             departure_limit.strftime("%H:%M")),
+        )
+        get_db().commit()
+        flash("일정 추천 설정을 저장했습니다. '일정 다시 추천'을 누르면 적용됩니다.", "success")
+        return redirect(url_for("trip_itinerary", trip_id=trip_id))
+
+    @app.get("/trips/<int:trip_id>/itinerary/day/<int:day_number>")
+    def itinerary_day_detail(trip_id, day_number):
+        trip = query_db("SELECT * FROM trips WHERE id = ?", (trip_id,), one=True)
+        if trip is None:
+            abort(404)
+        day = query_db(
+            "SELECT * FROM itinerary_days WHERE trip_id = ? AND day_number = ?",
+            (trip_id, day_number), one=True,
+        )
+        if day is None:
+            abort(404)
+        items = query_db(
+            """SELECT p.*, ii.sequence, ii.is_locked
+               FROM itinerary_items AS ii JOIN places AS p ON p.id = ii.place_id
+               WHERE ii.day_id = ? ORDER BY ii.sequence""",
+            (day["id"],),
+        )
+        accommodation = query_db(
+            "SELECT * FROM accommodations WHERE trip_id = ?", (trip_id,), one=True
+        )
+        transport_legs = query_db(
+            "SELECT * FROM trip_transport_legs WHERE trip_id = ? ORDER BY departure_at, id",
+            (trip_id,),
+        )
+        availability = _build_day_availability(
+            trip, transport_legs, _get_recommendation_settings(trip_id)
+        )[day_number]
+        place_days = {item["id"]: day_number for item in items}
+        place_sequences = {item["id"]: index for index, item in enumerate(items, 1)}
+        accommodation_status = _accommodation_status(accommodation, day["date"])
+        map_accommodation = accommodation
+        if accommodation and accommodation["check_in_date"] and not accommodation_status:
+            map_accommodation = None
+        return render_template(
+            "day_detail.html", trip=trip, day=day, day_number=day_number,
+            items=items, accommodation=accommodation, accommodation_status=accommodation_status,
+            day_availability=availability,
+            map_points=_map_points(map_accommodation, items, place_days, place_sequences),
+            map_total=len(items) + (1 if map_accommodation and map_accommodation["latitude"] is not None else 0),
+            maps_enabled=bool(app.config.get("GOOGLE_MAPS_BROWSER_API_KEY")),
+        )
 
     @app.post("/trips/<int:trip_id>/itinerary/day/<int:day_number>/optimize")
     def optimize_itinerary_day(trip_id, day_number):
@@ -326,7 +444,7 @@ def create_app(test_config=None):
         )
         if len(places) < 2:
             flash("순서를 추천할 장소가 충분하지 않습니다.", "error")
-            return redirect(url_for("trip_itinerary", trip_id=trip_id))
+            return _itinerary_day_redirect(trip_id, day_number, request.form.get("return_to_day") == "1")
         accommodation = query_db(
             "SELECT * FROM accommodations WHERE trip_id = ?", (trip_id,), one=True
         )
@@ -347,14 +465,14 @@ def create_app(test_config=None):
         except sqlite3.Error:
             db.rollback()
             flash("세부 일정 순서를 저장하지 못했습니다.", "error")
-            return redirect(url_for("trip_itinerary", trip_id=trip_id))
+            return _itinerary_day_redirect(trip_id, day_number, request.form.get("return_to_day") == "1")
         flash(f"Day {day_number} 방문 순서를 추천해 적용했습니다.", "success")
-        return redirect(url_for("trip_itinerary", trip_id=trip_id))
+        return _itinerary_day_redirect(trip_id, day_number, request.form.get("return_to_day") == "1")
 
     @app.post("/trips/<int:trip_id>/itinerary/places/<int:place_id>/toggle-lock")
     def toggle_itinerary_place_lock(trip_id, place_id):
         item = query_db(
-            """SELECT ii.id, ii.is_locked FROM itinerary_items AS ii
+            """SELECT ii.id, ii.is_locked, d.day_number FROM itinerary_items AS ii
                JOIN itinerary_days AS d ON d.id = ii.day_id
                WHERE d.trip_id = ? AND ii.place_id = ?""",
             (trip_id, place_id), one=True,
@@ -368,6 +486,8 @@ def create_app(test_config=None):
         )
         get_db().commit()
         flash("방문 순서를 고정했습니다." if locked else "방문 순서 고정을 해제했습니다.", "success")
+        if request.form.get("return_to_day") == "1":
+            return redirect(url_for("itinerary_day_detail", trip_id=trip_id, day_number=item["day_number"]))
         return redirect(url_for("trip_itinerary", trip_id=trip_id))
 
     @app.post("/trips/<int:trip_id>/place-search")
@@ -408,6 +528,10 @@ def create_app(test_config=None):
                         MIN(d.day_number), p.name COLLATE NOCASE""",
             (trip_id,),
         )
+        transport_legs = query_db(
+            "SELECT * FROM trip_transport_legs WHERE trip_id = ? ORDER BY departure_at, id",
+            (trip_id,),
+        )
         start = date.fromisoformat(trip["start_date"])
         end = date.fromisoformat(trip["end_date"])
         return render_template(
@@ -426,6 +550,7 @@ def create_app(test_config=None):
                    JOIN itinerary_days d ON d.id = ii.day_id WHERE d.trip_id = ?""",
                 (trip_id,),
             )},
+            transport_legs=transport_legs,
         )
 
     @app.post("/trips")
@@ -480,6 +605,28 @@ def create_app(test_config=None):
         if end < start:
             flash("종료일은 시작일보다 빠를 수 없습니다.", "error")
             return redirect(url_for("trip_detail", trip_id=trip_id))
+
+        accommodation = query_db(
+            "SELECT check_in_date, check_out_date FROM accommodations WHERE trip_id = ?",
+            (trip_id,), one=True,
+        )
+        if accommodation and accommodation["check_in_date"] and accommodation["check_out_date"]:
+            check_in = date.fromisoformat(accommodation["check_in_date"])
+            check_out = date.fromisoformat(accommodation["check_out_date"])
+            if check_in < start or check_out > end:
+                flash("여행 기간 안에 숙소 체크인·체크아웃 날짜가 포함되어야 합니다. 숙소 날짜를 먼저 수정해 주세요.", "error")
+                return redirect(url_for("trip_detail", trip_id=trip_id))
+        transport_legs = query_db(
+            "SELECT leg_type, departure_at, arrival_at FROM trip_transport_legs WHERE trip_id = ?",
+            (trip_id,),
+        )
+        for leg in transport_legs:
+            event_date = date.fromisoformat(
+                leg["arrival_at"][:10] if leg["leg_type"] == "arrival" else leg["departure_at"][:10]
+            )
+            if event_date < start or event_date > end:
+                flash("등록된 항공·기차 도착일 또는 출발일이 여행 기간 밖으로 나갑니다. 여행 기간이나 교통편을 먼저 수정해 주세요.", "error")
+                return redirect(url_for("trip_detail", trip_id=trip_id))
 
         day_count = (end - start).days + 1
         db = get_db()
@@ -553,16 +700,30 @@ def create_app(test_config=None):
 
     @app.post("/trips/<int:trip_id>/accommodation")
     def save_accommodation(trip_id):
-        if query_db("SELECT id FROM trips WHERE id = ?", (trip_id,), one=True) is None:
+        trip = query_db("SELECT * FROM trips WHERE id = ?", (trip_id,), one=True)
+        if trip is None:
             abort(404)
         name = request.form.get("name", "").strip()
         address = request.form.get("address", "").strip()
         latitude = request.form.get("latitude", "").strip()
         longitude = request.form.get("longitude", "").strip()
         google_place_id = request.form.get("google_place_id", "").strip() or None
+        check_in_date = request.form.get("check_in_date", "")
+        check_out_date = request.form.get("check_out_date", "")
         if not name or not address:
             flash("숙소 이름과 주소를 입력해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
+            return redirect(url_for("trip_detail", trip_id=trip_id, edit_accommodation=1))
+        try:
+            check_in = date.fromisoformat(check_in_date)
+            check_out = date.fromisoformat(check_out_date)
+            trip_start = date.fromisoformat(trip["start_date"])
+            trip_end = date.fromisoformat(trip["end_date"])
+        except ValueError:
+            flash("숙소 체크인과 체크아웃 날짜를 입력해 주세요.", "error")
+            return redirect(url_for("trip_detail", trip_id=trip_id, edit_accommodation=1))
+        if check_in < trip_start or check_out > trip_end or check_out <= check_in:
+            flash("숙소 날짜는 여행 기간 안에서 체크아웃이 체크인보다 뒤가 되도록 선택해 주세요.", "error")
+            return redirect(url_for("trip_detail", trip_id=trip_id, edit_accommodation=1))
         coordinates = _parse_coordinates(latitude, longitude)
         if coordinates is None and (latitude or longitude):
             flash("위도와 경도를 올바르게 함께 입력해 주세요.", "error")
@@ -573,18 +734,114 @@ def create_app(test_config=None):
         ).fetchone()
         if existing:
             db.execute(
-                "UPDATE accommodations SET name = ?, address = ?, latitude = ?, longitude = ?, google_place_id = ?, coordinates_updated_at = ? WHERE trip_id = ?",
-                (name, address, *(coordinates or (None, None)), google_place_id,
+                "UPDATE accommodations SET name = ?, address = ?, check_in_date = ?, check_out_date = ?, latitude = ?, longitude = ?, google_place_id = ?, coordinates_updated_at = ? WHERE trip_id = ?",
+                (name, address, check_in_date, check_out_date, *(coordinates or (None, None)), google_place_id,
                  _utc_now() if google_place_id and coordinates else None, trip_id),
             )
         else:
             db.execute(
-                "INSERT INTO accommodations (trip_id, name, address, latitude, longitude, google_place_id, coordinates_updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (trip_id, name, address, *(coordinates or (None, None)), google_place_id,
+                "INSERT INTO accommodations (trip_id, name, address, check_in_date, check_out_date, latitude, longitude, google_place_id, coordinates_updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (trip_id, name, address, check_in_date, check_out_date, *(coordinates or (None, None)), google_place_id,
                  _utc_now() if google_place_id and coordinates else None),
             )
         db.commit()
         flash("숙소 정보를 저장했습니다.", "success")
+        return redirect(url_for("trip_detail", trip_id=trip_id))
+
+    @app.post("/trips/<int:trip_id>/transport")
+    def add_transport_leg(trip_id):
+        trip = query_db("SELECT * FROM trips WHERE id = ?", (trip_id,), one=True)
+        if trip is None:
+            abort(404)
+        mode = request.form.get("mode", "")
+        leg_type = request.form.get("leg_type", "")
+        carrier = request.form.get("carrier", "").strip()[:120]
+        transport_number = request.form.get("transport_number", "").strip()[:80]
+        origin = request.form.get("origin", "").strip()[:180]
+        destination = request.form.get("destination", "").strip()[:180]
+        departure_value = request.form.get("departure_at", "")
+        arrival_value = request.form.get("arrival_at", "")
+        if mode not in {"flight", "train"} or leg_type not in {"arrival", "departure"}:
+            flash("교통수단과 도착·출발 유형을 선택해 주세요.", "error")
+            return redirect(url_for("trip_detail", trip_id=trip_id))
+        try:
+            departure_at = datetime.fromisoformat(departure_value)
+            arrival_at = datetime.fromisoformat(arrival_value)
+            trip_start = date.fromisoformat(trip["start_date"])
+            trip_end = date.fromisoformat(trip["end_date"])
+        except ValueError:
+            flash("출발·도착 날짜와 시간을 입력해 주세요.", "error")
+            return redirect(url_for("trip_detail", trip_id=trip_id))
+        event_date = arrival_at.date() if leg_type == "arrival" else departure_at.date()
+        if not origin or not destination:
+            flash("출발지와 도착지를 입력해 주세요.", "error")
+            return redirect(url_for("trip_detail", trip_id=trip_id))
+        if not trip_start <= event_date <= trip_end:
+            flash("도착편은 도착일, 출발편은 출발일이 여행 기간 안에 있어야 합니다.", "error")
+            return redirect(url_for("trip_detail", trip_id=trip_id))
+
+        uploaded = request.files.get("ticket")
+        original_name = None
+        stored_name = None
+        if uploaded and uploaded.filename:
+            extension = Path(uploaded.filename).suffix.lower()
+            if extension not in {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".pdf"}:
+                flash("티켓은 JPG, PNG, WEBP, HEIC, HEIF, PDF 파일로 첨부해 주세요.", "error")
+                return redirect(url_for("trip_detail", trip_id=trip_id))
+            safe_name = secure_filename(uploaded.filename)
+            original_name = safe_name if Path(safe_name).suffix.lower() == extension else f"티켓{extension}"
+            stored_name = f"{uuid.uuid4().hex}{extension}"
+            uploaded.save(os.path.join(app.config["TRANSPORT_UPLOAD_FOLDER"], stored_name))
+        db = get_db()
+        try:
+            db.execute(
+                """INSERT INTO trip_transport_legs
+                   (trip_id, mode, leg_type, carrier, transport_number, origin, destination,
+                    departure_at, arrival_at, original_file_name, stored_file_name)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (trip_id, mode, leg_type, carrier, transport_number, origin, destination,
+                 departure_at.isoformat(timespec="minutes"), arrival_at.isoformat(timespec="minutes"),
+                 original_name, stored_name),
+            )
+            db.commit()
+        except sqlite3.Error:
+            db.rollback()
+            if stored_name:
+                os.remove(os.path.join(app.config["TRANSPORT_UPLOAD_FOLDER"], stored_name))
+            flash("교통편을 저장하지 못했습니다.", "error")
+            return redirect(url_for("trip_detail", trip_id=trip_id))
+        flash("항공·기차 정보를 저장했습니다. 다음에 일정을 다시 추천할 때 반영됩니다.", "success")
+        return redirect(url_for("trip_detail", trip_id=trip_id))
+
+    @app.get("/trips/<int:trip_id>/transport/<int:leg_id>/ticket")
+    def transport_ticket(trip_id, leg_id):
+        leg = query_db(
+            "SELECT stored_file_name, original_file_name FROM trip_transport_legs WHERE id = ? AND trip_id = ?",
+            (leg_id, trip_id), one=True,
+        )
+        if leg is None or not leg["stored_file_name"]:
+            abort(404)
+        return send_from_directory(
+            app.config["TRANSPORT_UPLOAD_FOLDER"], leg["stored_file_name"],
+            download_name=leg["original_file_name"], as_attachment=True,
+        )
+
+    @app.post("/trips/<int:trip_id>/transport/<int:leg_id>/delete")
+    def delete_transport_leg(trip_id, leg_id):
+        leg = query_db(
+            "SELECT stored_file_name FROM trip_transport_legs WHERE id = ? AND trip_id = ?",
+            (leg_id, trip_id), one=True,
+        )
+        if leg is None:
+            abort(404)
+        db = get_db()
+        db.execute("DELETE FROM trip_transport_legs WHERE id = ? AND trip_id = ?", (leg_id, trip_id))
+        db.commit()
+        if leg["stored_file_name"]:
+            file_path = os.path.join(app.config["TRANSPORT_UPLOAD_FOLDER"], leg["stored_file_name"])
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+        flash("교통편을 삭제했습니다.", "success")
         return redirect(url_for("trip_detail", trip_id=trip_id))
 
     @app.post("/trips/<int:trip_id>/places")
@@ -704,6 +961,12 @@ def create_app(test_config=None):
 
     @app.post("/trips/<int:trip_id>/itinerary/places/<int:place_id>/delete")
     def remove_itinerary_place(trip_id, place_id):
+        day = query_db(
+            """SELECT d.day_number, d.id AS day_id FROM itinerary_items ii
+               JOIN itinerary_days d ON d.id = ii.day_id
+               WHERE d.trip_id = ? AND ii.place_id = ?""",
+            (trip_id, place_id), one=True,
+        )
         cursor = get_db().execute(
             """DELETE FROM itinerary_items WHERE place_id = ? AND day_id IN
                (SELECT id FROM itinerary_days WHERE trip_id = ?)""",
@@ -712,8 +975,60 @@ def create_app(test_config=None):
         get_db().commit()
         if cursor.rowcount == 0:
             abort(404)
+        if day:
+            remaining = query_db(
+                "SELECT id FROM itinerary_items WHERE day_id = ? ORDER BY sequence", (day["day_id"],)
+            )
+            db = get_db()
+            db.execute("UPDATE itinerary_items SET sequence = sequence + 100000 WHERE day_id = ?", (day["day_id"],))
+            for sequence, item in enumerate(remaining, 1):
+                db.execute("UPDATE itinerary_items SET sequence = ? WHERE id = ?", (sequence, item["id"]))
+            db.commit()
         flash("장소를 일정에서 제외했습니다.", "success")
+        if request.form.get("return_to_day") == "1" and day:
+            return redirect(url_for("itinerary_day_detail", trip_id=trip_id, day_number=day["day_number"]))
         return redirect(url_for("trip_itinerary", trip_id=trip_id))
+
+    @app.post("/trips/<int:trip_id>/itinerary/day/<int:day_number>/reorder")
+    def reorder_itinerary_day(trip_id, day_number):
+        day = query_db(
+            "SELECT id FROM itinerary_days WHERE trip_id = ? AND day_number = ?",
+            (trip_id, day_number), one=True,
+        )
+        if day is None:
+            abort(404)
+        payload = request.get_json(silent=True) or {}
+        try:
+            submitted_ids = [int(place_id) for place_id in payload["place_ids"]]
+        except (KeyError, TypeError, ValueError):
+            return {"error": "방문 장소 목록을 확인해 주세요."}, 400
+        rows = query_db(
+            "SELECT place_id, is_locked FROM itinerary_items WHERE day_id = ? ORDER BY sequence",
+            (day["id"],),
+        )
+        expected_ids = [row["place_id"] for row in rows]
+        if len(submitted_ids) != len(expected_ids) or set(submitted_ids) != set(expected_ids):
+            return {"error": "방문 장소 목록이 변경되었습니다. 새로고침 후 다시 시도해 주세요."}, 400
+        locked_ids = {row["place_id"] for row in rows if row["is_locked"]}
+        if any(
+            (expected_ids[index] in locked_ids) != (submitted_ids[index] in locked_ids)
+            or (expected_ids[index] in locked_ids and expected_ids[index] != submitted_ids[index])
+            for index in range(len(expected_ids))
+        ):
+            return {"error": "순서 고정한 장소는 이동할 수 없습니다."}, 400
+        db = get_db()
+        try:
+            db.execute("UPDATE itinerary_items SET sequence = sequence + 100000 WHERE day_id = ?", (day["id"],))
+            for sequence, place_id in enumerate(submitted_ids, 1):
+                db.execute(
+                    "UPDATE itinerary_items SET sequence = ? WHERE day_id = ? AND place_id = ?",
+                    (sequence, day["id"], place_id),
+                )
+            db.commit()
+        except sqlite3.Error:
+            db.rollback()
+            return {"error": "방문 순서를 저장하지 못했습니다."}, 500
+        return {"ok": True}
 
     @app.post("/trips/<int:trip_id>/accommodation/delete")
     def delete_accommodation(trip_id):
@@ -802,8 +1117,124 @@ def _parse_coordinates(latitude, longitude):
     return lat, lng
 
 
+def _itinerary_day_redirect(trip_id, day_number, return_to_day):
+    if return_to_day:
+        return redirect(url_for("itinerary_day_detail", trip_id=trip_id, day_number=day_number))
+    return redirect(url_for("trip_itinerary", trip_id=trip_id))
+
+
 def _utc_now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _accommodation_status(accommodation, day_date):
+    if not accommodation or not accommodation["check_in_date"] or not accommodation["check_out_date"]:
+        return None
+    if day_date < accommodation["check_in_date"] or day_date > accommodation["check_out_date"]:
+        return None
+    if day_date == accommodation["check_in_date"]:
+        return "체크인"
+    if day_date == accommodation["check_out_date"]:
+        return "체크아웃"
+    return "숙박"
+
+
+def _get_recommendation_settings(trip_id):
+    row = query_db(
+        "SELECT * FROM trip_recommendation_settings WHERE trip_id = ?",
+        (trip_id,), one=True,
+    )
+    return dict(row) if row else {
+        "flight_buffer_hours": 4.0,
+        "train_buffer_hours": 2.0,
+        "day_start_time": "08:00",
+        "day_end_time": "20:00",
+        "arrival_latest_start": "18:00",
+        "departure_earliest_cutoff": "12:00",
+    }
+
+
+def _build_day_availability(trip, transport_legs, settings=None):
+    settings = settings or {}
+    start_date = date.fromisoformat(trip["start_date"])
+    day_count = (date.fromisoformat(trip["end_date"]) - start_date).days + 1
+    day_start = datetime_time.fromisoformat(settings.get("day_start_time", "08:00"))
+    day_end = datetime_time.fromisoformat(settings.get("day_end_time", "20:00"))
+    arrival_latest_start = datetime_time.fromisoformat(settings.get("arrival_latest_start", "18:00"))
+    departure_earliest_cutoff = datetime_time.fromisoformat(settings.get("departure_earliest_cutoff", "12:00"))
+    days = {
+        number: {
+            "is_available": True,
+            "blocked_reason": "",
+            "available_from": "",
+            "available_until": "",
+            "available_hours": (datetime.combine(start_date, day_end) - datetime.combine(start_date, day_start)).total_seconds() / 3600,
+            "availability_note": "",
+        }
+        for number in range(1, day_count + 1)
+    }
+    start_bounds = {}
+    end_bounds = {}
+    blocked_reasons = {number: [] for number in days}
+
+    for leg in transport_legs:
+        mode = leg["mode"]
+        buffer_hours = float(settings.get(
+            "flight_buffer_hours" if mode == "flight" else "train_buffer_hours",
+            4 if mode == "flight" else 2,
+        ))
+        label = "항공" if mode == "flight" else "기차"
+        if leg["leg_type"] == "arrival":
+            event = datetime.fromisoformat(leg["arrival_at"])
+            day_number = (event.date() - start_date).days + 1
+            if day_number not in days:
+                continue
+            available = event + timedelta(hours=buffer_hours)
+            if available.date() != event.date() or available.time() >= arrival_latest_start or available.time() >= day_end:
+                blocked_reasons[day_number].append(
+                    f"{label} 도착 후 여유 시간이 늦어 그날은 비워 두었습니다."
+                )
+            else:
+                start_bounds[day_number] = max(
+                    start_bounds.get(day_number, day_start), available.time()
+                )
+        else:
+            event = datetime.fromisoformat(leg["departure_at"])
+            day_number = (event.date() - start_date).days + 1
+            if day_number not in days:
+                continue
+            available = event - timedelta(hours=buffer_hours)
+            if available.date() != event.date() or available.time() <= departure_earliest_cutoff or available.time() <= day_start:
+                blocked_reasons[day_number].append(
+                    f"{label} 출발 전 준비 시간을 고려해 그날은 비워 두었습니다."
+                )
+            else:
+                end_bounds[day_number] = min(
+                    end_bounds.get(day_number, day_end), available.time()
+                )
+
+    for day_number, result in days.items():
+        start_bound = start_bounds.get(day_number, day_start)
+        end_bound = end_bounds.get(day_number, day_end)
+        available_hours = (
+            datetime.combine(start_date, end_bound) - datetime.combine(start_date, start_bound)
+        ).total_seconds() / 3600
+        if available_hours < 2 and not blocked_reasons[day_number]:
+            blocked_reasons[day_number].append("이동 준비 시간을 제외하면 일정 가능 시간이 짧아 그날은 비워 두었습니다.")
+        result["available_hours"] = max(0.0, available_hours)
+        if blocked_reasons[day_number]:
+            result["is_available"] = False
+            result["blocked_reason"] = " ".join(blocked_reasons[day_number])
+        else:
+            result["available_from"] = start_bound.strftime("%H:%M") if day_number in start_bounds else ""
+            result["available_until"] = end_bound.strftime("%H:%M") if day_number in end_bounds else ""
+            if result["available_from"] and result["available_until"]:
+                result["availability_note"] = f"{result['available_from']} 이후 · {result['available_until']}까지 추천"
+            elif result["available_from"]:
+                result["availability_note"] = f"{result['available_from']} 이후 추천"
+            elif result["available_until"]:
+                result["availability_note"] = f"{result['available_until']}까지 추천"
+    return days
 
 
 def _map_points(accommodation, places, place_days=None, place_sequences=None):
@@ -818,6 +1249,8 @@ def _map_points(accommodation, places, place_days=None, place_sequences=None):
             "latitude": accommodation["latitude"],
             "longitude": accommodation["longitude"],
             "kind": "accommodation",
+            "check_in_date": accommodation["check_in_date"],
+            "check_out_date": accommodation["check_out_date"],
         })
     for place in places:
         if place["latitude"] is None or place["longitude"] is None:

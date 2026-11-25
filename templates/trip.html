@@ -14,9 +14,32 @@
 
     <section class="detail-grid">
       <div class="place-entry-column">
+      <article class="panel transport-panel">
+        <div class="panel-heading"><div><h2>항공·기차</h2></div></div>
+        {% if transport_legs %}<div class="transport-leg-list">{% for leg in transport_legs %}<article class="transport-leg-card">
+          <div class="transport-leg-heading"><strong>{{ '항공' if leg.mode == 'flight' else '기차' }} · {{ '도착편' if leg.leg_type == 'arrival' else '출발편' }}</strong>{% if leg.carrier or leg.transport_number %}<span>{{ leg.carrier }} {{ leg.transport_number }}</span>{% endif %}</div>
+          <p class="transport-route">{{ leg.origin }} <span>→</span> {{ leg.destination }}</p>
+          <p class="transport-times">출발 {{ leg.departure_at.replace('T', ' ') }} · 도착 {{ leg.arrival_at.replace('T', ' ') }}</p>
+          {% if leg.stored_file_name %}<a class="transport-ticket-link" href="{{ url_for('transport_ticket', trip_id=trip.id, leg_id=leg.id) }}">📎 {{ leg.original_file_name }}</a>{% endif %}
+          <form method="post" action="{{ url_for('delete_transport_leg', trip_id=trip.id, leg_id=leg.id) }}" onsubmit="return confirm('이 교통편 정보를 삭제할까요?');"><button type="submit" class="icon-button" aria-label="교통편 삭제" title="교통편 삭제">×</button></form>
+        </article>{% endfor %}</div>{% endif %}
+        <details class="transport-form-details">
+          <summary>항공·기차 등록 <span aria-hidden="true">＋</span></summary>
+          <form class="trip-form transport-form" method="post" enctype="multipart/form-data" action="{{ url_for('add_transport_leg', trip_id=trip.id) }}">
+            <div class="transport-form-row"><label>교통수단<select name="mode"><option value="flight">항공</option><option value="train">기차</option></select></label><label>여정<select name="leg_type"><option value="arrival">도착편</option><option value="departure">출발편</option></select></label></div>
+            <div class="transport-form-row"><label>항공사·철도회사<input name="carrier" maxlength="120" placeholder="예: 대한항공, Eurostar"></label><label>편명·열차번호<input name="transport_number" maxlength="80" placeholder="선택 입력"></label></div>
+            <div class="transport-form-row"><label>출발지<input name="origin" maxlength="180" placeholder="공항 또는 역" required></label><label>도착지<input name="destination" maxlength="180" placeholder="공항 또는 역" required></label></div>
+            <p class="form-hint transport-time-hint">출발 시각은 출발지, 도착 시각은 도착지의 현지 시각으로 입력하세요.</p>
+            <div class="transport-form-row"><label>출발 날짜와 시각<input type="datetime-local" name="departure_at" required></label><label>도착 날짜와 시각<input type="datetime-local" name="arrival_at" required></label></div>
+            <label>항공권·기차표 파일<input type="file" name="ticket" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf"><small>JPG, PNG, WEBP, HEIC, HEIF, PDF · 최대 32MB</small></label>
+            <button class="primary-button" type="submit">교통편 추가 <span>＋</span></button>
+          </form>
+        </details>
+      </article>
+
       <article class="panel stay-panel" id="stay-panel">
         <div class="panel-heading"><div><h2>숙소</h2></div></div>
-        {% if accommodation %}<div class="accommodation-summary"><div><strong>{{ accommodation.name }}</strong><p>{{ accommodation.address }}</p></div><button type="button" class="text-button edit-toggle" data-target="accommodation-editor">수정하기</button></div><button type="button" class="secondary-button accommodation-add-button" data-target="accommodation-editor">숙소 추가 <span>＋</span></button>{% endif %}
+        {% if accommodation %}<div class="accommodation-summary"><div><strong>{{ accommodation.name }}</strong><p>{{ accommodation.address }}</p>{% if accommodation.check_in_date and accommodation.check_out_date %}<small>체크인 {{ accommodation.check_in_date }} · 체크아웃 {{ accommodation.check_out_date }}</small>{% endif %}</div><button type="button" class="text-button edit-toggle" data-target="accommodation-editor">수정하기</button></div><button type="button" class="secondary-button accommodation-add-button" data-target="accommodation-editor">숙소 추가 <span>＋</span></button>{% endif %}
         <div id="accommodation-editor" {% if accommodation and not accommodation_edit_open %}hidden{% endif %}>
           <form method="post" action="{{ url_for('search_trip_places', trip_id=trip.id) }}" class="search-form">
             <input type="hidden" name="target" value="accommodation">
@@ -32,6 +55,7 @@
             <input type="hidden" name="longitude" value="{{ accommodation.longitude if accommodation and accommodation.longitude is not none else '' }}">
             <label>숙소명<input name="name" maxlength="150" placeholder="검색 결과를 선택하세요" value="{{ accommodation.name if accommodation else '' }}" {% if not accommodation %}disabled{% endif %} required></label>
             <label>주소<input name="address" maxlength="300" placeholder="검색 결과의 주소" value="{{ accommodation.address if accommodation else '' }}" {% if not accommodation %}disabled{% endif %} required></label>
+            <div class="accommodation-date-row"><label>체크인<input type="date" name="check_in_date" min="{{ trip.start_date }}" max="{{ trip.end_date }}" value="{{ accommodation.check_in_date if accommodation and accommodation.check_in_date else '' }}" {% if not accommodation %}disabled{% endif %} required></label><label>체크아웃<input type="date" name="check_out_date" min="{{ trip.start_date }}" max="{{ trip.end_date }}" value="{{ accommodation.check_out_date if accommodation and accommodation.check_out_date else '' }}" {% if not accommodation %}disabled{% endif %} required></label></div>
             <div class="accommodation-actions"><button class="secondary-button" type="submit" {% if not accommodation %}disabled{% endif %}>{% if accommodation %}변경 저장{% else %}숙소 추가{% endif %}</button>{% if accommodation %}<button class="text-button cancel-edit" type="button" data-target="accommodation-editor">취소</button>{% endif %}</div>
           </form>
         </div>
@@ -62,6 +86,7 @@
           <button class="primary-button" type="submit" disabled>장소 추가 <span>↗</span></button>
         </form>
       </article>
+
       </div>
 
       <article class="panel places-panel">
@@ -78,6 +103,18 @@
     <footer>MADE FOR THE JOURNEY <span>✳</span></footer>
   </main>
   <script>
+    const accommodationForm = document.getElementById('accommodation-form');
+    if (accommodationForm) {
+      const checkInInput = accommodationForm.elements.check_in_date;
+      const checkOutInput = accommodationForm.elements.check_out_date;
+      const syncCheckOutMinimum = () => {
+        checkOutInput.min = checkInInput.value || checkOutInput.dataset.tripStart;
+        if (checkOutInput.value && checkOutInput.value <= checkInInput.value) checkOutInput.value = '';
+      };
+      checkOutInput.dataset.tripStart = checkOutInput.min;
+      checkInInput.addEventListener('change', syncCheckOutMinimum);
+      syncCheckOutMinimum();
+    }
     document.querySelectorAll('.edit-toggle, .cancel-edit').forEach((button) => {
       button.addEventListener('click', () => {
         const editor = document.getElementById(button.dataset.target);

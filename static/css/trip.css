@@ -394,7 +394,7 @@
 }
 
 .places-panel .place-list {
-  margin-top: 15px;
+  margin-top: 10px;
 }
 
 .accommodation-summary {
@@ -618,6 +618,10 @@
   grid-column: 1;
 }
 
+.stay-panel.panel.stay-panel {
+  margin-top: 0;
+}
+
 .place-add-panel {
   grid-column: 1;
 }
@@ -727,6 +731,144 @@
 .accommodation-summary {
   background: #f0f6ef;
   border-color: #dce9dc;
+}
+
+.accommodation-summary small {
+  display: block;
+  margin-top: 6px;
+  color: #6d5200;
+  font-size: 12px;
+}
+
+.place-entry-column > .transport-panel {
+  margin-top: 20px;
+}
+
+.transport-form select {
+  display: block;
+  width: 100%;
+  height: 41px;
+  margin-top: 6px;
+  padding: 0 11px;
+  border: 1px solid #e5e9e3;
+  border-radius: 7px;
+  background: #fcfcfa;
+  color: var(--ink);
+  font: 14px 'DM Sans','Noto Sans KR',sans-serif;
+}
+
+.transport-form input[type=file] {
+  height: auto;
+  padding: 8px;
+  background: #fff;
+}
+
+.transport-form label small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.transport-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.transport-form .primary-button {
+  width: 100%;
+}
+
+.transport-time-hint {
+  margin: 0 0 -5px;
+}
+
+.transport-leg-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 18px;
+}
+
+.transport-leg-card {
+  position: relative;
+  padding: 13px 34px 13px 0;
+  border-top: 1px solid #eff1ec;
+}
+
+.transport-leg-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.transport-leg-heading strong {
+  font-size: 14px;
+}
+
+.transport-leg-heading span,
+.transport-times {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.transport-route {
+  margin: 7px 0 0;
+  font-size: 15px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.transport-route span {
+  padding: 0 4px;
+  color: #8a978e;
+}
+
+.transport-times {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.transport-ticket-link {
+  display: inline-block;
+  margin-top: 7px;
+  color: #365b4a;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.transport-leg-card > form {
+  position: absolute;
+  top: 7px;
+  right: -8px;
+  margin: 0;
+}
+
+.transport-leg-card .icon-button {
+  padding: 2px 7px;
+}
+
+.accommodation-date-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.day-stay-status {
+  color: #9a7411;
+  font-weight: 700;
+}
+
+@media (max-width:520px) {
+  .accommodation-date-row {
+    grid-template-columns: 1fr;
+  }
+
+  .transport-form-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .accommodation-summary strong {
@@ -857,18 +999,13 @@
 .place-entry-column>.panel {
   grid-column: auto;
   grid-row: auto;
-  margin: 0;
+  margin: 10px;
   border: 1px solid var(--line);
   border-radius: 13px;
 }
 
 .place-entry-column>.place-add-panel {
-  margin-top: 20px;
   border-top: 1px solid var(--line);
-}
-
-.place-entry-column>.stay-panel {
-  margin-bottom: 0;
 }
 
 .places-panel {
@@ -895,6 +1032,46 @@
     grid-column: 1;
     grid-row: auto;
   }
+}
+
+.place-entry-column > .transport-panel {
+  order: 0;
+  margin: 0 10px 20px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+}
+
+.place-entry-column > .stay-panel {
+  order: 1;
+  margin: 10px 10px 20px;
+  border-bottom: 0;
+}
+
+.place-entry-column > .place-add-panel {
+  order: 2;
+  margin: 0 10px 10px;
+}
+
+.transport-form-details {
+  margin-top: 4px;
+}
+
+.transport-form-details summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid #e5e9e3;
+  border-radius: 8px;
+  background: #f8faf7;
+  color: #365b4a;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.transport-form-details[open] summary {
+  margin-bottom: 12px;
 }
 
 @media (max-width:900px) {

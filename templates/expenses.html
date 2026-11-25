@@ -36,7 +36,7 @@
           <div class="expense-form-row"><label>분류<select name="category">{% for category in categories %}<option value="{{ category }}">{{ category }}</option>{% endfor %}</select></label><label>날짜<input type="date" name="expense_date" value="{{ today }}" required></label></div>
           <div class="expense-form-row"><label>금액<input type="number" name="amount" min="0" step="0.01" required></label><label>통화<select name="currency">{% for currency in currencies %}<option value="{{ currency }}" {% if currency == trip.budget_currency %}selected{% endif %}>{{ currency }}</option>{% endfor %}</select></label></div>
           <label>메모<textarea name="note" rows="3" maxlength="1000" placeholder="예약 번호, 이용 정보 등"></textarea></label>
-          <label>영수증 또는 티켓 파일<input type="file" name="attachment" accept=".jpg,.jpeg,.png,.webp,.pdf"><small>JPG, PNG, WEBP, PDF · 최대 16MB</small></label>
+          <label>영수증 또는 티켓 파일<input type="file" name="attachment" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf"><small>JPG, PNG, WEBP, HEIC, HEIF, PDF · 최대 32MB</small></label>
           <button class="primary-button" type="submit">기록 저장 <span>↗</span></button>
         </form>
       </article>

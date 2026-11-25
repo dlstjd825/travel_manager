@@ -190,6 +190,16 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
+.topbar-links {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.topbar-links a {
+  text-decoration: none;
+}
+
 .brand {
   font-size: 20px;
   font-weight: 700;

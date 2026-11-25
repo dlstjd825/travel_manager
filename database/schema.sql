@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS accommodations (
     trip_id INTEGER NOT NULL UNIQUE REFERENCES trips(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     address TEXT NOT NULL DEFAULT '',
+    check_in_date TEXT,
+    check_out_date TEXT,
     latitude REAL,
     longitude REAL,
     google_place_id TEXT,
@@ -58,6 +60,33 @@ CREATE TABLE IF NOT EXISTS itinerary_items (
 
 CREATE INDEX IF NOT EXISTS idx_places_trip_id ON places(trip_id);
 CREATE INDEX IF NOT EXISTS idx_itinerary_days_trip_id ON itinerary_days(trip_id);
+
+CREATE TABLE IF NOT EXISTS trip_transport_legs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    mode TEXT NOT NULL CHECK (mode IN ('flight', 'train')),
+    leg_type TEXT NOT NULL CHECK (leg_type IN ('arrival', 'departure')),
+    carrier TEXT NOT NULL DEFAULT '',
+    transport_number TEXT NOT NULL DEFAULT '',
+    origin TEXT NOT NULL,
+    destination TEXT NOT NULL,
+    departure_at TEXT NOT NULL,
+    arrival_at TEXT NOT NULL,
+    original_file_name TEXT,
+    stored_file_name TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_transport_legs_trip ON trip_transport_legs(trip_id, leg_type, departure_at);
+
+CREATE TABLE IF NOT EXISTS trip_recommendation_settings (
+    trip_id INTEGER PRIMARY KEY REFERENCES trips(id) ON DELETE CASCADE,
+    flight_buffer_hours REAL NOT NULL DEFAULT 4,
+    train_buffer_hours REAL NOT NULL DEFAULT 2,
+    day_start_time TEXT NOT NULL DEFAULT '08:00',
+    day_end_time TEXT NOT NULL DEFAULT '20:00',
+    arrival_latest_start TEXT NOT NULL DEFAULT '18:00',
+    departure_earliest_cutoff TEXT NOT NULL DEFAULT '12:00'
+);
 
 CREATE TABLE IF NOT EXISTS trip_expenses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
