@@ -1,4 +1,4 @@
-# Roam/Plan 로컬 실행
+# Trip Manager 로컬 실행
 
 ## 프로젝트 구조
 

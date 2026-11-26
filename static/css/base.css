@@ -1,6 +1,44 @@
 /* Shared styles used across pages. */
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap");
 
+button,
+a,
+input,
+select,
+textarea,
+[role="button"] {
+  transition:
+    color 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    outline-color 180ms ease,
+    transform 180ms ease;
+}
+
+@keyframes content-reveal {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+details[open] > :not(summary) {
+  animation: content-reveal 220ms ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  a,
+  input,
+  select,
+  textarea,
+  [role="button"],
+  details[open] > :not(summary),
+  .trip-module-nav::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
 .back-link {
   font-size: 12px;
   color: #6f8175;
@@ -8,10 +46,24 @@
 }
 
 .trip-module-nav {
+  position: relative;
   display: flex;
   gap: 20px;
   margin: 0 0 24px;
   border-bottom: 1px solid #e2e8e1;
+}
+
+.trip-module-nav::after {
+  position: absolute;
+  right: auto;
+  bottom: -1px;
+  left: 0;
+  width: var(--nav-indicator-width, 0px);
+  height: 3px;
+  background: #365b4a;
+  content: "";
+  pointer-events: none;
+  transform: translateX(var(--nav-indicator-x, 0px));
 }
 
 .trip-module-nav a {
@@ -22,10 +74,11 @@
   padding: 8px 4px;
   border-bottom: 3px solid transparent;
   color: #829087;
-  font-size: 25px;
+  font-size: 20px;
   font-weight: 700;
   text-align: center;
   text-decoration: none;
+  transition: none;
 }
 
 .trip-module-nav a:hover,
@@ -34,7 +87,7 @@
 }
 
 .trip-module-nav a.active {
-  border-bottom-color: #365b4a;
+  border-bottom-color: transparent;
 }
 
 .trip-section-heading {
@@ -129,9 +182,9 @@
 
 .panel-heading {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 18px;
+  margin-bottom: 14px;
 }
 
 .panel-heading .eyebrow {
@@ -254,10 +307,7 @@
   .stay-edit {
     margin-left: 42px;
   }
-}
-
-@media (max-width:520px) {
-  .detail-hero {
+.detail-hero {
     padding-top: 35px;
   }
 }
@@ -533,7 +583,7 @@ body {
   cursor: pointer;
   margin-top: 4px;
   padding: 0 15px;
-  text-align: left;
+  text-align: center;
 }
 
 .primary-button span {
@@ -567,6 +617,11 @@ body {
   color: #a24f39;
 }
 
+.notice.info {
+  background: #eef3f0;
+  color: #40584a;
+}
+
 footer {
   border-top: 1px solid var(--line);
   padding: 20px 0 28px;
@@ -585,10 +640,7 @@ footer span {
   .shell {
     padding: 0 20px;
   }
-}
-
-@media (max-width:760px) {
-  .hero-stamp {
+.hero-stamp {
     width: 82px;
     height: 82px;
   }
@@ -598,10 +650,7 @@ footer span {
   .hero-stamp {
     display: none;
   }
-}
-
-@media (max-width:430px) {
-  .date-row {
+.date-row {
     grid-template-columns: 1fr;
   }
 }
@@ -660,17 +709,11 @@ footer span {
   .search-result {
     grid-template-columns: 1fr auto;
   }
-}
-
-@media (max-width:520px) {
-  .maps-attribution {
+.maps-attribution {
     grid-column: 1;
     grid-row: 2;
   }
-}
-
-@media (max-width:520px) {
-  .search-result .select-location {
+.search-result .select-location {
     grid-column: 2;
     grid-row: 1/3;
   }
@@ -886,4 +929,180 @@ footer {
 .expense-list {
   display: flex;
   flex-direction: column;
+}
+
+/* Shared clustering styles used by the trip list and trip planner. */
+
+.cluster-tool {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px;
+  margin: 0 0 18px;
+  border: 1px solid #e8ece7;
+  border-radius: 10px;
+  background: #fafbf8;
+}
+
+.cluster-tool>div {
+  min-width: 0;
+}
+
+.cluster-tool>div strong {
+  font-size: 14px;
+}
+
+.cluster-tool>div p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cluster-form {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex: none;
+}
+
+.cluster-form label {
+  font-size: 11px;
+  color: #626f67;
+  font-weight: 600;
+}
+
+.cluster-form select {
+  display: block;
+  height: 40px;
+  min-width: 100px;
+  margin-top: 5px;
+  padding: 0 9px;
+  border: 1px solid #e5e9e3;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink);
+  font: 13px "DM Sans","Noto Sans KR",sans-serif;
+}
+
+.cluster-form .primary-button {
+  white-space: nowrap;
+  padding: 0 13px;
+}
+
+.cluster-results {
+  margin: 0 0 18px;
+}
+
+.cluster-summary {
+  margin-bottom: 10px;
+  color: #69776e;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cluster-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(230px,1fr));
+  gap: 10px;
+}
+
+.cluster-card {
+  padding: 14px;
+  border: 1px solid #e8ece7;
+  border-left: 4px solid var(--cluster-color);
+  border-radius: 9px;
+  background: #fff;
+}
+
+.cluster-card header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.cluster-dot {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--cluster-color);
+  box-shadow: 0 0 0 1px var(--cluster-color);
+}
+
+.cluster-card header strong {
+  font-size: 14px;
+}
+
+.cluster-size {
+  font-size: 11px;
+  color: #6f7a72;
+}
+
+.cluster-distance {
+  font-size: 11px;
+  color: #6f7a72;
+  margin-left: auto;
+  font-weight: 600;
+}
+
+.cluster-center {
+  margin: 8px 0;
+  color: #89948c;
+  font-size: 10px;
+}
+
+.cluster-card ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cluster-card li {
+  padding: 7px 0;
+  border-top: 1px solid #f0f2ed;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cluster-card li small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.cluster-note {
+  margin: 10px 0 0;
+  padding: 10px;
+  border-radius: 7px;
+  background: #fff7e7;
+  color: #80622b;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+@media (max-width:760px) {
+  .cluster-tool {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .cluster-form {
+    width: 100%;
+  }
+  .cluster-form label {
+    flex: 1;
+  }
+  .cluster-form select {
+    width: 100%;
+  }
+  .cluster-form .primary-button {
+    flex: 1;
+  }
+  .cluster-distance {
+    margin-left: 0;
+  }
 }

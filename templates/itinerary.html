@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1" name="viewport"/>
   <title>
-   {{ trip.title }} 일정 &middot; 여행 플래너
+   {{ trip.title }} 일정 &middot; Trip Manager
   </title>
   <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
   <link href="{{ url_for('static', filename='css/itinerary.css') }}" rel="stylesheet"/>
@@ -16,11 +16,7 @@
      <span class="brand-mark">
       ✳
      </span>
-     roam
-     <span class="brand-light">
-      /
-     </span>
-     plan
+     Trip <span class="brand-light">Manager</span>
     </a>
     <a class="back-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">
      &larr; 여행 개요
@@ -36,18 +32,19 @@
       일정 관리
      </h1>
      <p>
-      {{ trip.title }} &middot; {{ trip.start_date }} &mdash; {{ trip.end_date }} &middot; {{ night_count }}박 {{ day_count }}일
+      {{ trip.title }} &middot; {{ selected_region.label ~ ' 일정 · ' if selected_region else '' }}{{ trip.start_date }} &mdash; {{ trip.end_date }} &middot; {{ night_count }}박 {{ day_count }}일
      </p>
     </div>
     <div class="itinerary-actions">
      <span id="itinerary-save-status" role="status">
-      장소와 날짜를 드래그해 순서를 바꿀 수 있어요.
+      {% if selected_region %}선택한 국가의 일정을 보고 있어요.{% else %}장소와 날짜를 드래그해 순서를 바꿀 수 있어요.{% endif %}
      </span>
-     {% if not accommodation %}
-     <a class="secondary-button itinerary-accommodation-link" href="{{ url_for('trip_detail', trip_id=trip.id, edit_accommodation=1) }}#stay-panel">
+     {% if not accommodations %}
+     <a class="secondary-button itinerary-accommodation-link" href="{{ url_for('trip_accommodation', trip_id=trip.id) }}">
       숙소 추가
      </a>
      {% endif %}
+     {% if not regions %}
      <form action="{{ url_for('recommend_trip_itinerary', trip_id=trip.id) }}" method="post">
       <button class="primary-button" type="submit">
        일정 다시 추천
@@ -56,10 +53,22 @@
        </span>
       </button>
      </form>
+     {% endif %}
     </div>
    </section>
    {% include '_trip_nav.html' %}
-   <details class="recommendation-settings">
+   {% if regions %}
+   <nav aria-label="국가별 일정" class="region-filter">
+    <span>국가별 일정</span>
+    <div class="region-filter-buttons">
+     <a class="region-filter-button {{ 'is-active' if not selected_region else '' }}" href="{{ url_for('trip_itinerary', trip_id=trip.id) }}" {% if not selected_region %}aria-current="page"{% endif %}>전체</a>
+     {% for region in regions %}
+     <a class="region-filter-button {{ 'is-active' if selected_region and selected_region.id == region.id else '' }}" href="{{ url_for('trip_itinerary', trip_id=trip.id, region_id=region.id) }}" {% if selected_region and selected_region.id == region.id %}aria-current="page"{% endif %}>{{ region.label }}</a>
+     {% endfor %}
+    </div>
+   </nav>
+   {% endif %}
+   {% if not regions %}<details class="recommendation-settings">
     <summary>
      일정 추천 시간 설정
     </summary>
@@ -75,6 +84,10 @@
       <label>
        기차 도착&middot;출발 여유 시간 (시간)
        <input max="12" min="0" name="train_buffer_hours" required="" step="0.5" type="number" value="{{ recommendation_settings.train_buffer_hours }}"/>
+      </label>
+      <label>
+       버스 여유 시간 (시간)
+       <input max="12" min="0" name="bus_buffer_hours" required="" step="0.5" type="number" value="{{ recommendation_settings.bus_buffer_hours }}"/>
       </label>
       <label>
        하루 추천 시작
@@ -97,7 +110,7 @@
       시간 설정 저장
      </button>
     </form>
-   </details>
+   </details>{% endif %}
    {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}
    <div class="notices">
     {% for category, message in messages %}
@@ -109,6 +122,11 @@
    {% endif %}{% endwith %}
    <div class="itinerary-layout">
     <div class="itinerary-schedule-column">
+     {% if has_itinerary %}
+     <div class="itinerary-global-actions">
+      <button aria-pressed="false" class="secondary-button itinerary-expand-all" id="itinerary-expand-all" type="button">모든 일정 펼치기</button>
+     </div>
+     {% endif %}
      {% if has_itinerary %}
       {% if unscheduled_places %}
      <article class="day-card unscheduled-card">
@@ -127,7 +145,7 @@
       </header>
       <ol class="itinerary-stops unscheduled-stops">
        {% for place in unscheduled_places %}
-       <li class="unscheduled-place-row">
+       <li class="unscheduled-place-row" data-place-id="{{ place.id }}">
         <span aria-label="{{ '식당' if place.category == 'restaurant' else '관광지' }}" class="place-pin category-pin {{ 'restaurant-pin' if place.category == 'restaurant' else 'attraction-pin' }}" role="img">
          {% if place.category == 'restaurant' %}
          <svg aria-hidden="true" viewbox="0 0 24 24">
@@ -171,8 +189,9 @@
      {% endif %}
      <section class="day-list" data-reorder-url="{{ url_for('reorder_trip_itinerary', trip_id=trip.id) }}">
       {% for day in days %}
-      <article class="day-card" data-day-card="">
+       <article class="day-card" data-day-card="" data-day-number="{{ day.day_number }}">
        <header class="day-header">
+        {% if not selected_region %}<button aria-label="날짜 순서 이동" class="day-drag-handle" draggable="true" title="날짜 순서 이동" type="button">⠿</button>{% endif %}
         <div class="day-badge">
          DAY
          <strong>
@@ -184,27 +203,36 @@
           {{ day.date }}
          </h2>
          <p>
-          {% if day['items'] %}<span class="count-value">{{ day['items']|length }}곳</span> 방문{% else %}일정 여유일{% endif %}{% if day.accommodation_status %}
-          <span class="day-stay-status">
-           &middot; 숙소 {{ day.accommodation_status }}
-          </span>
-          {% endif %}
+          {% if day['items'] %}<span class="count-value">{{ day['items']|length }}곳</span> 방문{% else %}일정 여유일{% endif %}
          </p>
         </div>
         <a class="secondary-button day-detail-link" href="{{ url_for('itinerary_day_detail', trip_id=trip.id, day_number=day.day_number) }}">
          세부 일정 세우기
         </a>
-        <button aria-label="날짜 순서 이동" class="day-drag-handle" draggable="true" title="날짜 순서 이동" type="button">
-         ⠿
-        </button>
+        <button aria-controls="day-schedule-{{ day.day_number }}" aria-expanded="false" aria-label="Day {{ day.day_number }} 일정 펼치기" class="day-card-toggle" type="button">⌄</button>
        </header>
-       <div class="day-dropzone" data-date="{{ day.date }}" data-day-number="{{ day.day_number }}" data-detail-url="{{ url_for('itinerary_day_detail', trip_id=trip.id, day_number=day.day_number) }}">
+       <div class="day-dropzone" data-date="{{ day.date }}" data-day-number="{{ day.day_number }}" data-detail-url="{{ url_for('itinerary_day_detail', trip_id=trip.id, day_number=day.day_number) }}" hidden id="day-schedule-{{ day.day_number }}">
+        {% if day.accommodations_for_date %}
+        <section aria-label="이 날짜의 숙소" class="day-accommodations">
+         <h3>숙소</h3>
+         <div class="day-accommodation-list">
+          {% for stay in day.accommodations_for_date %}
+          <article class="day-accommodation-card">
+           <strong>{{ stay.name }} <span>{{ '체크인' if stay.check_in_date == day.date else ('체크아웃' if stay.check_out_date == day.date else '숙박') }}</span></strong>
+           <p>{{ stay.address or '주소 미입력' }}</p>
+           <small>체크인 {{ stay.check_in_date }} · 체크아웃 {{ stay.check_out_date }}</small>
+          </article>
+          {% endfor %}
+         </div>
+        </section>
+        {% endif %}
         <ol class="itinerary-stops">
          {% for item in day['items'] %}
-         <li class="itinerary-stop {{ 'is-locked' if item.is_locked else '' }}" data-place-id="{{ item.place_id }}" draggable="{{ 'false' if item.is_locked else 'true' }}">
-          <span aria-hidden="true" class="drag-handle">
+         {% for transfer in item.transfers_before %}{% include '_itinerary_transfer.html' %}{% endfor %}
+         <li class="itinerary-stop {{ 'is-locked' if item.is_locked else '' }}" data-place-id="{{ item.place_id }}" draggable="{{ 'false' if item.is_locked or selected_region else 'true' }}">
+          {% if not selected_region %}<span aria-hidden="true" class="drag-handle">
            ⠿
-          </span>
+          </span>{% endif %}
           <span aria-label="{{ '식당' if item.category == 'restaurant' else '관광지' }}" class="place-pin category-pin {{ 'restaurant-pin' if item.category == 'restaurant' else 'attraction-pin' }}" role="img">
            {% if item.category == 'restaurant' %}
            <svg aria-hidden="true" viewbox="0 0 24 24">
@@ -247,7 +275,9 @@
            </button>
           </form>
          </li>
+         {% for transfer in item.transfers_after %}{% include '_itinerary_transfer.html' %}{% endfor %}
          {% endfor %}
+         {% for transfer in day.transfers_after %}{% include '_itinerary_transfer.html' %}{% endfor %}
         </ol>
         <div class="free-day" {% if day['items'] %}hidden{% endif %}>
          <span>
@@ -287,14 +317,13 @@
       </div>
      </div>
      <div aria-label="지도에 표시할 일정 날짜" class="map-day-filters" role="group">
-      <button class="map-day-filter active" data-day="all" type="button">
-       전체
-      </button>
-      {% for day_number in map_days %}
-      <button class="map-day-filter" data-day="{{ day_number }}" type="button">
-       {{ day_number }}일차
-      </button>
-      {% endfor %}
+      <button aria-pressed="true" class="map-day-filter active" data-day="all" type="button">전체</button>
+      <select aria-label="지도에 표시할 일차" class="map-day-select" id="map-day-select">
+       <option selected value="">일차 선택</option>
+       {% for map_day in map_days %}
+       <option value="{{ map_day.day_number }}">{{ map_day.day_number }}일차 · {{ map_day.date[5:]|replace('-', '.') }} · {{ map_day.place_count }}곳</option>
+       {% endfor %}
+      </select>
      </div>
      {% if maps_enabled %}
      <div aria-label="일정별 여행 지도" class="trip-map" id="trip-map">
@@ -322,10 +351,11 @@
   <script async="" src="https://maps.googleapis.com/maps/api/js?key={{ config.GOOGLE_MAPS_BROWSER_API_KEY|urlencode }}&amp;loading=async&amp;callback=initTravelMap&amp;v=weekly">
   </script>
   {% endif %}
-  {% if has_itinerary %}
+  {% if has_itinerary and not selected_region %}
   <script defer="True" src="{{ url_for('static', filename='js/itinerary.js') }}">
   </script>
   {% endif %}
+  <script defer src="{{ url_for('static', filename='js/itinerary-focus.js') }}"></script>
 {% include '_preserve_scroll.html' %}
  </body>
 </html>

@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1" name="viewport"/>
   <title>
-   {{ trip.title }} 경비 &middot; 여행 플래너
+   {{ trip.title }} 경비 &middot; Trip Manager
   </title>
   <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
   <link href="{{ url_for('static', filename='css/expenses.css') }}" rel="stylesheet"/>
@@ -16,11 +16,7 @@
      <span class="brand-mark">
       ✳
      </span>
-     roam
-     <span class="brand-light">
-      /
-     </span>
-     plan
+     Trip <span class="brand-light">Manager</span>
     </a>
     <a class="back-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">
      &larr; 여행 개요

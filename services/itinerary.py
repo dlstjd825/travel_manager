@@ -27,7 +27,8 @@ def recommend_itinerary(places, accommodation, start_date, day_count, day_availa
     if not eligible_days:
         return days
 
-    groups = cluster_places(places, accommodation, max_groups=len(eligible_days))
+    cluster_anchor = None if isinstance(accommodation, (list, tuple)) else accommodation
+    groups = cluster_places(places, cluster_anchor, max_groups=len(eligible_days))
     # Give full days the larger geographic clusters; shorter travel windows
     # receive smaller clusters where possible.
     groups = sorted(groups, key=lambda group: (-len(group["members"]), group["number"]))

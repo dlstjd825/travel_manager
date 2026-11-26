@@ -45,13 +45,21 @@ def init_db():
             "coordinates_updated_at": "TEXT",
             "check_in_date": "TEXT",
             "check_out_date": "TEXT",
+            "region_id": "INTEGER REFERENCES trip_regions(id) ON DELETE SET NULL",
         },
         "places": {
             "coordinates_updated_at": "TEXT",
             "category": "TEXT NOT NULL DEFAULT 'attraction'",
+            "region_id": "INTEGER REFERENCES trip_regions(id) ON DELETE SET NULL",
+        },
+        "itinerary_items": {
+            "region_id": "INTEGER REFERENCES trip_regions(id) ON DELETE SET NULL",
         },
         "trip_expenses": {
             "place_id": "INTEGER REFERENCES places(id) ON DELETE SET NULL",
+        },
+        "trip_recommendation_settings": {
+            "bus_buffer_hours": "REAL NOT NULL DEFAULT 2",
         },
     }
     for table, columns in migrations.items():
@@ -59,6 +67,120 @@ def init_db():
         for column, column_type in columns.items():
             if column not in existing:
                 connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
+    transport_columns = {row["name"] for row in connection.execute("PRAGMA table_info(trip_transport_legs)")}
+    transport_schema = connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'trip_transport_legs'"
+    ).fetchone()["sql"].lower()
+    if "leg_type" in transport_columns or "'bus'" not in transport_schema:
+        connection.execute(
+            """CREATE TABLE trip_transport_legs_new (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+                   mode TEXT NOT NULL CHECK (mode IN ('flight', 'train', 'bus')),
+                   carrier TEXT NOT NULL DEFAULT '',
+                   transport_number TEXT NOT NULL DEFAULT '',
+                   origin TEXT NOT NULL,
+                   destination TEXT NOT NULL,
+                   departure_at TEXT NOT NULL,
+                   arrival_at TEXT NOT NULL,
+                   original_file_name TEXT,
+                   stored_file_name TEXT,
+                   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+               )"""
+        )
+        connection.execute(
+            """INSERT INTO trip_transport_legs_new
+               (id, trip_id, mode, carrier, transport_number, origin, destination,
+                departure_at, arrival_at, original_file_name, stored_file_name, created_at)
+               SELECT id, trip_id, mode, carrier, transport_number, origin, destination,
+                      departure_at, arrival_at, original_file_name, stored_file_name, created_at
+               FROM trip_transport_legs"""
+        )
+        connection.execute("DROP TABLE trip_transport_legs")
+        connection.execute("ALTER TABLE trip_transport_legs_new RENAME TO trip_transport_legs")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_transport_legs_trip ON trip_transport_legs(trip_id, departure_at)")
+    connection.execute(
+        """INSERT OR IGNORE INTO trip_members (trip_id, user_id, role)
+           SELECT id, user_id, 'owner' FROM trips WHERE user_id IS NOT NULL"""
+    )
+    trip_rows = connection.execute(
+        "SELECT id, city, start_date, end_date FROM trips ORDER BY id"
+    ).fetchall()
+    trips_by_city = {}
+    members_by_trip = {}
+    for trip in trip_rows:
+        trips_by_city.setdefault((trip["city"] or "").strip().casefold(), []).append(trip)
+    for membership in connection.execute("SELECT trip_id, user_id FROM trip_members"):
+        members_by_trip.setdefault(membership["trip_id"], set()).add(membership["user_id"])
+    for merged_trip in trip_rows:
+        components = [part.strip() for part in (merged_trip["city"] or "").split(" · ") if part.strip()]
+        if len(components) < 2:
+            continue
+        if connection.execute(
+            "SELECT 1 FROM merged_trip_sources WHERE merged_trip_id = ? LIMIT 1",
+            (merged_trip["id"],),
+        ).fetchone():
+            continue
+        parent_members = members_by_trip.get(merged_trip["id"], set())
+        inferred_sources = []
+        for order, component in enumerate(components):
+            candidates = [
+                candidate for candidate in trips_by_city.get(component.casefold(), [])
+                if candidate["id"] != merged_trip["id"]
+                and merged_trip["start_date"] <= candidate["start_date"]
+                and candidate["end_date"] <= merged_trip["end_date"]
+                and parent_members.intersection(members_by_trip.get(candidate["id"], set()))
+            ]
+            if len(candidates) != 1:
+                inferred_sources = []
+                break
+            inferred_sources.append((merged_trip["id"], candidates[0]["id"], order))
+        if len(inferred_sources) >= 2:
+            connection.executemany(
+                "INSERT OR IGNORE INTO merged_trip_sources (merged_trip_id, source_trip_id, sort_order) VALUES (?, ?, ?)",
+                inferred_sources,
+            )
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_places_region ON places(trip_id, region_id)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_itinerary_items_region ON itinerary_items(region_id, day_id)")
+    accommodation_indexes = connection.execute("PRAGMA index_list(accommodations)").fetchall()
+    has_trip_unique = False
+    for index in accommodation_indexes:
+        if index["unique"]:
+            index_columns = [
+                row["name"] for row in connection.execute(f"PRAGMA index_info('{index['name']}')")
+            ]
+            if index_columns == ["trip_id"]:
+                has_trip_unique = True
+                break
+    if has_trip_unique:
+        connection.execute(
+            """CREATE TABLE accommodations_multi (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+                   name TEXT NOT NULL,
+                   address TEXT NOT NULL DEFAULT '',
+                   check_in_date TEXT,
+                   check_out_date TEXT,
+                   latitude REAL,
+                   longitude REAL,
+                   google_place_id TEXT,
+                   coordinates_updated_at TEXT,
+                   region_id INTEGER REFERENCES trip_regions(id) ON DELETE SET NULL
+               )"""
+        )
+        connection.execute(
+            """INSERT INTO accommodations_multi
+               (id, trip_id, name, address, check_in_date, check_out_date, latitude, longitude,
+                google_place_id, coordinates_updated_at, region_id)
+               SELECT id, trip_id, name, address, check_in_date, check_out_date, latitude, longitude,
+                      google_place_id, coordinates_updated_at, region_id
+               FROM accommodations"""
+        )
+        connection.execute("DROP TABLE accommodations")
+        connection.execute("ALTER TABLE accommodations_multi RENAME TO accommodations")
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_accommodations_trip_dates ON accommodations(trip_id, check_in_date, check_out_date)"
+    )
     user_columns = {row["name"] for row in connection.execute("PRAGMA table_info(users)")}
     if "email" in user_columns:
         used_usernames = set()
@@ -76,6 +198,10 @@ def init_db():
             connection.execute("UPDATE users SET username = ? WHERE id = ?", (username, user["id"]))
             used_usernames.add(username.casefold())
     connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username COLLATE NOCASE)")
+    connection.execute(
+        """INSERT OR IGNORE INTO trip_members (trip_id, user_id, role)
+           SELECT id, user_id, 'owner' FROM trips WHERE user_id IS NOT NULL"""
+    )
     connection.execute(
         "CREATE INDEX IF NOT EXISTS idx_trip_expenses_place ON trip_expenses(place_id, expense_date)"
     )

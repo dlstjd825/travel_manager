@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1" name="viewport"/>
   <title>
-   여행 병합 &middot; 여행 플래너
+   여행 병합 &middot; Trip Manager
   </title>
   <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
   <link href="{{ url_for('static', filename='css/index.css') }}" rel="stylesheet"/>
@@ -17,11 +17,7 @@
      <span class="brand-mark">
       ✳
      </span>
-     roam
-     <span class="brand-light">
-      /
-     </span>
-     plan
+     Trip <span class="brand-light">Manager</span>
     </a>
     <a class="back-link" href="{{ url_for('index') }}">
      &larr; 내 여행
@@ -57,33 +53,44 @@
        병합할 여행 선택
       </h2>
       <p class="overview-caption">
-       두 개 이상 선택하면 전체 기간에 맞춰 날짜별 일정과 장소를 가져옵니다.
+       국가/지역 이름을 지정하세요. 같은 이름은 하나로 묶이고, 병합 뒤 일정 화면에서 국가별로 볼 수 있습니다.
       </p>
      </div>
     </div>
     <div class="merge-trip-options">
      {% for trip in trips %}
-     <label class="merge-trip-option">
-      <input name="trip_ids" type="checkbox" value="{{ trip.id }}"/>
-      <span class="merge-trip-option-content">
-       <strong>
-        {{ trip.title }}
-       </strong>
-       <small>
-        {{ trip.city }} &middot; {{ trip.start_date }} &mdash; {{ trip.end_date }} &middot; <span class="count-value">{{ trip.place_count }}곳</span>
-       </small>
-      </span>
-     </label>
+     <div class="merge-source-option">
+      <label class="merge-trip-option">
+       <input name="trip_ids" type="checkbox" value="{{ trip.id }}"/>
+       <span class="merge-trip-option-content">
+        <strong>{{ trip.title }}</strong>
+        <small>{{ trip.city }} &middot; {{ trip.start_date }} &mdash; {{ trip.end_date }} &middot; <span class="count-value">{{ trip.place_count }}곳</span></small>
+       </span>
+      </label>
+      <label class="merge-region-field">
+       이 여행의 국가/지역 이름
+       <input class="merge-region-label" data-trip-id="{{ trip.id }}" maxlength="100" name="region_label_{{ trip.id }}" value="{{ trip.city }}"/>
+      </label>
+     </div>
      {% endfor %}
     </div>
+    <section class="merge-preview" id="merge-preview" aria-live="polite" hidden>
+     <div class="merge-preview-heading">
+      <h3>병합 미리보기</h3>
+      <p id="merge-preview-summary"></p>
+     </div>
+     <p class="merge-preview-hint" id="merge-preview-hint"></p>
+     <div class="merge-transfer-date-list" id="merge-transfer-date-list"></div>
+     <div class="merge-preview-days" id="merge-preview-days"></div>
+    </section>
     <label class="merge-title-label">
      새 여행 이름
      <input maxlength="100" name="title" placeholder="비워 두면 선택한 여행 이름으로 만듭니다."/>
     </label>
     <p class="merge-trip-note">
-     새 여행을 만들며 날짜별 장소와 방문 순서를 가져옵니다. 원래 여행은 그대로 유지됩니다. 숙소, 교통편 티켓, 지출, 장소 사진과 기록은 복사되지 않습니다.
+     날짜별 일정, 모든 숙소, 교통편과 티켓 파일을 가져옵니다. 다른 국가 숙소의 체크인·체크아웃이 같은 날이면 국가 이동 일정을 만들고, 이동 날짜는 직접 선택할 수 있습니다. 원래 여행은 그대로 유지됩니다. 지출, 장소 사진과 기록은 복사되지 않습니다.
     </p>
-    <button class="primary-button" type="submit">
+    <button class="primary-button" id="merge-submit" type="submit" disabled>
      선택한 여행 병합
      <span>
       &nearrow;
@@ -109,6 +116,10 @@
     </span>
    </footer>
   </main>
+  {% if trips|length >= 2 %}
+  <script id="merge-preview-data" type="application/json">{{ preview_trips|tojson }}</script>
+  <script defer src="{{ url_for('static', filename='js/merge-trips.js') }}"></script>
+  {% endif %}
   {% include '_preserve_scroll.html' %}
  </body>
 </html>

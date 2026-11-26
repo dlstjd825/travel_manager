@@ -3,12 +3,12 @@
  <head>
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1" name="viewport"/>
-  <title>{{ '회원가입' if mode == 'register' else '로그인' }} · roam/plan</title>
+  <title>{{ '회원가입' if mode == 'register' else '로그인' }} · Trip Manager</title>
   <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
  </head>
  <body>
   <main class="auth-shell">
-   <a class="brand" href="{{ url_for('login') }}"><span class="brand-mark">✳</span> roam<span class="brand-light">/</span>plan</a>
+   <a class="brand" href="{{ url_for('login') }}"><span class="brand-mark">✳</span> Trip <span class="brand-light">Manager</span></a>
    <section class="panel auth-panel">
     <h1>{{ '회원가입' if mode == 'register' else '로그인' }}</h1>
     <p class="auth-description">{{ '계정을 만들어 여행 계획을 저장하세요.' if mode == 'register' else '계정에 로그인해 여행 계획을 확인하세요.' }}</p>

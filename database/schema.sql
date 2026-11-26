@@ -20,9 +20,47 @@ CREATE TABLE IF NOT EXISTS trips (
     CHECK (end_date >= start_date)
 );
 
+CREATE TABLE IF NOT EXISTS trip_members (
+    trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK (role IN ('owner', 'editor')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (trip_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_trip_members_user ON trip_members(user_id, trip_id);
+
+CREATE TABLE IF NOT EXISTS merged_trip_sources (
+    merged_trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    source_trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (merged_trip_id, source_trip_id),
+    CHECK (merged_trip_id <> source_trip_id)
+);
+CREATE INDEX IF NOT EXISTS idx_merged_trip_sources_source ON merged_trip_sources(source_trip_id, merged_trip_id);
+
+CREATE TABLE IF NOT EXISTS trip_invitations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    invited_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    invited_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'declined')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (trip_id, invited_user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_trip_invitations_user ON trip_invitations(invited_user_id, status);
+
+CREATE TABLE IF NOT EXISTS user_notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message TEXT NOT NULL,
+    is_read INTEGER NOT NULL DEFAULT 0 CHECK (is_read IN (0, 1)),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_user_notifications_user ON user_notifications(user_id, is_read, id);
+
 CREATE TABLE IF NOT EXISTS accommodations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    trip_id INTEGER NOT NULL UNIQUE REFERENCES trips(id) ON DELETE CASCADE,
+    trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     address TEXT NOT NULL DEFAULT '',
     check_in_date TEXT,
@@ -30,7 +68,19 @@ CREATE TABLE IF NOT EXISTS accommodations (
     latitude REAL,
     longitude REAL,
     google_place_id TEXT,
-    coordinates_updated_at TEXT
+    coordinates_updated_at TEXT,
+    region_id INTEGER REFERENCES trip_regions(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_accommodations_trip_dates ON accommodations(trip_id, check_in_date, check_out_date);
+
+CREATE TABLE IF NOT EXISTS trip_regions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    label TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (trip_id, label)
 );
 
 CREATE TABLE IF NOT EXISTS places (
@@ -44,6 +94,7 @@ CREATE TABLE IF NOT EXISTS places (
     category TEXT NOT NULL DEFAULT 'attraction' CHECK (category IN ('attraction', 'restaurant')),
     stay_duration INTEGER NOT NULL DEFAULT 60 CHECK (stay_duration > 0),
     coordinates_updated_at TEXT,
+    region_id INTEGER REFERENCES trip_regions(id) ON DELETE SET NULL,
     UNIQUE (trip_id, provider_place_id)
 );
 
@@ -62,8 +113,21 @@ CREATE TABLE IF NOT EXISTS itinerary_items (
     sequence INTEGER NOT NULL CHECK (sequence > 0),
     start_time TEXT,
     is_locked INTEGER NOT NULL DEFAULT 0 CHECK (is_locked IN (0, 1)),
+    region_id INTEGER REFERENCES trip_regions(id) ON DELETE SET NULL,
     UNIQUE (day_id, sequence),
     UNIQUE (day_id, place_id)
+);
+
+CREATE TABLE IF NOT EXISTS itinerary_transfers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    day_id INTEGER NOT NULL REFERENCES itinerary_days(id) ON DELETE CASCADE,
+    before_item_id INTEGER UNIQUE REFERENCES itinerary_items(id) ON DELETE SET NULL,
+    from_region_id INTEGER REFERENCES trip_regions(id) ON DELETE SET NULL,
+    to_region_id INTEGER REFERENCES trip_regions(id) ON DELETE SET NULL,
+    origin TEXT NOT NULL,
+    destination TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_places_trip_id ON places(trip_id);
@@ -72,8 +136,7 @@ CREATE INDEX IF NOT EXISTS idx_itinerary_days_trip_id ON itinerary_days(trip_id)
 CREATE TABLE IF NOT EXISTS trip_transport_legs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
-    mode TEXT NOT NULL CHECK (mode IN ('flight', 'train')),
-    leg_type TEXT NOT NULL CHECK (leg_type IN ('arrival', 'departure')),
+    mode TEXT NOT NULL CHECK (mode IN ('flight', 'train', 'bus')),
     carrier TEXT NOT NULL DEFAULT '',
     transport_number TEXT NOT NULL DEFAULT '',
     origin TEXT NOT NULL,
@@ -84,12 +147,13 @@ CREATE TABLE IF NOT EXISTS trip_transport_legs (
     stored_file_name TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_transport_legs_trip ON trip_transport_legs(trip_id, leg_type, departure_at);
+CREATE INDEX IF NOT EXISTS idx_transport_legs_trip ON trip_transport_legs(trip_id, departure_at);
 
 CREATE TABLE IF NOT EXISTS trip_recommendation_settings (
     trip_id INTEGER PRIMARY KEY REFERENCES trips(id) ON DELETE CASCADE,
     flight_buffer_hours REAL NOT NULL DEFAULT 4,
     train_buffer_hours REAL NOT NULL DEFAULT 2,
+    bus_buffer_hours REAL NOT NULL DEFAULT 2,
     day_start_time TEXT NOT NULL DEFAULT '08:00',
     day_end_time TEXT NOT NULL DEFAULT '20:00',
     arrival_latest_start TEXT NOT NULL DEFAULT '18:00',

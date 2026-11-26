@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1" name="viewport"/>
   <title>
-   Day {{ day_number }} &middot; {{ trip.title }} &middot; 여행 플래너
+   Day {{ day_number }} &middot; {{ trip.title }} &middot; Trip Manager
   </title>
   <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
   <link href="{{ url_for('static', filename='css/itinerary.css') }}" rel="stylesheet"/>
@@ -16,11 +16,7 @@
      <span class="brand-mark">
       ✳
      </span>
-     roam
-     <span class="brand-light">
-      /
-     </span>
-     plan
+     Trip <span class="brand-light">Manager</span>
     </a>
     <a class="back-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">
      &larr; 여행 개요
@@ -48,7 +44,7 @@
      </p>
      {% endif %}
     </div>
-    {% if items|length > 1 %}
+    {% if not has_regions %}{% if items|length > 1 %}
     <form action="{{ url_for('optimize_itinerary_day', trip_id=trip.id, day_number=day_number) }}" method="post">
      <input name="return_to_day" type="hidden" value="1"/>
      <button class="primary-button" type="submit">
@@ -65,7 +61,7 @@
       &orarr;
      </span>
     </button>
-    {% endif %}
+    {% endif %}{% endif %}
    </section>
    {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}
    <div class="notices">
@@ -91,6 +87,7 @@
      {% if items %}
      <ol class="itinerary-stops day-detail-stops" data-reorder-url="{{ url_for('reorder_itinerary_day', trip_id=trip.id, day_number=day_number) }}" id="day-stop-list">
       {% for item in items %}
+      {% for transfer in item.transfers_before %}{% include '_itinerary_transfer.html' %}{% endfor %}
       <li class="itinerary-stop day-detail-stop {{ 'is-locked' if item.is_locked else '' }}" data-place-id="{{ item.id }}" draggable="{{ 'false' if item.is_locked else 'true' }}">
        <span aria-hidden="true" class="drag-handle">
         ⠿
@@ -230,7 +227,9 @@
         </button>
        </form>
       </li>
+      {% for transfer in item.transfers_after %}{% include '_itinerary_transfer.html' %}{% endfor %}
       {% endfor %}
+      {% for transfer in transfers_after %}{% include '_itinerary_transfer.html' %}{% endfor %}
      </ol>
      {% else %}
      <div class="empty-state compact">
@@ -244,6 +243,11 @@
        전체 일정 보기
       </a>
      </div>
+     {% endif %}
+     {% if not items and transfers_after %}
+     <ol class="itinerary-stops day-detail-stops">
+      {% for transfer in transfers_after %}{% include '_itinerary_transfer.html' %}{% endfor %}
+     </ol>
      {% endif %}
     </section>
     <section class="panel itinerary-map-panel day-detail-map-panel">

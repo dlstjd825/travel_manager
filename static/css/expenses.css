@@ -1,47 +1,4 @@
 /* Expenses page styles. */
-.trip-page-actions .expenses-manage-link {
-  height: 43px;
-  min-height: 43px;
-  margin-top: 0;
-  box-sizing: border-box;
-}
-
-.expenses-manage-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 43px;
-  padding: 0 15px;
-  text-decoration: none;
-}
-
-.expenses-manage-link {
-  font: 600 14px "DM Sans","Noto Sans KR",sans-serif;
-}
-
-.expenses-hero {
-  min-height: 0;
-  display: flex;
-  padding: 42px 0 28px;
-}
-
-.expenses-hero .intro {
-  margin: 8px 0 0;
-}
-
-.expenses-hero .module-kicker {
-  margin: 0 0 5px;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.expenses-hero h1 {
-  margin: 0;
-  font-size: 34px;
-  letter-spacing: -1.2px;
-}
-
 .expense-place-link a {
   color: #365b4a;
   font-weight: 600;
@@ -312,22 +269,13 @@
   .expense-summary-grid {
     grid-template-columns: 1fr;
   }
-}
-
-@media (max-width:760px) {
-  .expense-content-grid {
+.expense-content-grid {
     grid-template-columns: 1fr;
   }
-}
-
-@media (max-width:760px) {
-  .topbar-links {
+.topbar-links {
     gap: 12px;
   }
-}
-
-@media (max-width:760px) {
-  .topbar-links a {
+.topbar-links a {
     font-size: 12px;
   }
 }
@@ -336,16 +284,7 @@
   .expense-form-row {
     grid-template-columns: 1fr;
   }
-}
-
-@media (max-width:480px) {
-  .budget-numbers {
+.budget-numbers {
     grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width:480px) {
-  .expenses-hero {
-    padding-top: 32px;
   }
 }

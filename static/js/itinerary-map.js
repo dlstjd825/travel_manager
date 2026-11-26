@@ -39,7 +39,14 @@ window.initTravelMap = async function () {
           gmpClickable: true, zIndex: point.kind === 'accommodation' ? 1000 : 100,
           anchorLeft: '-50%', anchorTop: '-50%', content: glyph,
         });
-        marker.addListener('click', () => showPoint(point, marker));
+        marker.addListener('click', () => {
+          showPoint(point, marker);
+          if (point.kind !== 'accommodation') {
+            window.dispatchEvent(new CustomEvent('itinerary-map-place-selected', {
+              detail: {placeId: point.id.replace(/^place-/, ''), dayNumber: point.day_number},
+            }));
+          }
+        });
         return {point, marker};
       });
       const showDay = (day) => {
@@ -62,7 +69,13 @@ window.initTravelMap = async function () {
         });
         if (visible > 1) map.fitBounds(bounds, 55);
         else if (visible === 1) { map.panTo(bounds.getCenter()); map.setZoom(14); }
-        document.querySelectorAll('.map-day-filter').forEach((button) => button.classList.toggle('active', button.dataset.day === day));
+        document.querySelectorAll('.map-day-filter').forEach((button) => {
+          const active = button.dataset.day === day;
+          button.classList.toggle('active', active);
+          button.setAttribute('aria-pressed', String(active));
+        });
+        const daySelect = document.getElementById('map-day-select');
+        if (daySelect) daySelect.value = day === 'all' ? '' : String(day);
       };
       window.updateItineraryMapDays = (assignments) => {
         markers.forEach(({point}) => {
@@ -73,6 +86,15 @@ window.initTravelMap = async function () {
         });
         showDay(selectedDay);
       };
-      document.querySelectorAll('.map-day-filter').forEach((button) => button.addEventListener('click', () => showDay(button.dataset.day)));
-      showDay('all');
+      window.setItineraryMapDay = showDay;
+      window.focusItineraryMapPlace = (placeId) => {
+        const entry = markers.find(({point}) => point.kind !== 'accommodation' && point.id.replace(/^place-/, '') === String(placeId));
+        if (!entry) return;
+        const day = entry.point.day_number ? String(entry.point.day_number) : 'all';
+        showDay(day);
+        map.panTo(entry.marker.position);
+        map.setZoom(Math.max(map.getZoom() || 14, 14));
+        showPoint(entry.point, entry.marker);
+      };
+      showDay(window.selectedItineraryMapDay || 'all');
     };

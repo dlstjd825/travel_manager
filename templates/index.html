@@ -1,10 +1,35 @@
+{% macro render_trip_card(trip, depth=0) %}
+<div class="trip-tree-node{% if depth > 0 %} is-nested{% endif %}">
+ <article class="trip-card{% if trip.source_trips %} is-merged-trip{% endif %}">
+  <div class="trip-date"><span>{{ trip.start_date[5:7] }}</span><small>{{ trip.start_date[0:4] }}</small></div>
+  <div class="trip-details">
+   <h3><a class="trip-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">{{ trip.title }} &nearrow;</a>{% if trip.source_trips %}<span class="trip-merged-badge">병합 여행</span>{% endif %}</h3>
+   <p>{{ trip.city }} <span>&middot;</span> {{ trip.start_date }} &mdash; {{ trip.end_date }} <span>&middot;</span> {{ trip.night_count }}박 {{ trip.day_count }}일</p>
+   <small>{{ trip.place_count }} PLACES SAVED</small>
+  </div>
+  {% if trip.member_role == 'owner' %}
+  <form action="{{ url_for('delete_trip', trip_id=trip.id) }}" method="post" onsubmit="return confirm('이 여행을 삭제할까요? 관련 장소와 일정도 함께 삭제됩니다.');">
+   <button aria-label="{{ trip.title }} 삭제" class="icon-button" title="여행 삭제">&times;</button>
+  </form>
+  {% endif %}
+ </article>
+ {% if trip.source_trips %}
+ <details class="trip-children-details" data-trip-id="{{ trip.id }}" open>
+  <summary class="trip-children-toggle">포함된 여행 <span>{{ trip.source_trips|length }}개</span></summary>
+  <div class="trip-children">
+   {% for source_trip in trip.source_trips %}{{ render_trip_card(source_trip, depth + 1) }}{% endfor %}
+  </div>
+ </details>
+ {% endif %}
+</div>
+{% endmacro %}
 <!DOCTYPE html>
 <html lang="ko">
  <head>
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1" name="viewport"/>
   <title>
-   여행 플래너
+   Trip Manager
   </title>
   <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
   <link href="{{ url_for('static', filename='css/index.css') }}" rel="stylesheet"/>
@@ -16,11 +41,7 @@
      <span class="brand-mark">
       ✳
      </span>
-     roam
-     <span class="brand-light">
-      /
-     </span>
-     plan
+     Trip <span class="brand-light">Manager</span>
     </a>
     <div class="account-controls">
      <span>{{ session.get('username', '') }}</span>
@@ -51,6 +72,34 @@
     {% endfor %}
    </div>
    {% endif %}{% endwith %}
+   {% if notifications %}
+   <div class="notices" aria-live="polite">
+    {% for notification in notifications %}
+    <p class="notice info">{{ notification.message }}</p>
+    {% endfor %}
+   </div>
+   {% endif %}
+   {% if invitations %}
+   <section class="panel invitation-panel">
+    <div class="panel-heading">
+     <div>
+      <h2>받은 여행 초대</h2>
+      <p class="overview-caption">초대를 수락하면 여행 일정을 함께 편집할 수 있어요.</p>
+     </div>
+    </div>
+    <div class="invitation-list">
+     {% for invitation in invitations %}
+     <article class="invitation-row">
+      <div><strong>{{ invitation.title }}</strong><small>{{ invitation.city }} · {{ invitation.start_date }} — {{ invitation.end_date }} · {{ invitation.invited_by_name }} 님의 초대</small></div>
+      <div class="invitation-actions">
+       <form action="{{ url_for('accept_trip_invitation', invitation_id=invitation.id) }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"/><button class="primary-button" type="submit">수락</button></form>
+       <form action="{{ url_for('decline_trip_invitation', invitation_id=invitation.id) }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"/><button class="text-button" type="submit">거절</button></form>
+      </div>
+     </article>
+     {% endfor %}
+    </div>
+   </section>
+   {% endif %}
    <section class="content-grid">
     <div class="section-heading">
      <div>
@@ -60,9 +109,9 @@
      </div>
      <div class="trip-heading-actions">
       <span class="count">
-       {{ '%02d'|format(trips|length) }} TRIPS
+       {{ '%02d'|format(all_trip_count) }} TRIPS
       </span>
-      {% if trips|length > 1 %}
+      {% if all_trip_count > 1 %}
       <a class="secondary-button merge-trip-link" href="{{ url_for('merge_trips_page') }}">
        여행 병합
       </a>
@@ -71,42 +120,7 @@
     </div>
     <div class="trip-list">
      {% for trip in trips %}
-     <article class="trip-card">
-      <div class="trip-date">
-       <span>
-        {{ trip.start_date[5:7] }}
-       </span>
-       <small>
-        {{ trip.start_date[0:4] }}
-       </small>
-      </div>
-      <div class="trip-details">
-       <h3>
-        <a class="trip-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">
-         {{ trip.title }} &nearrow;
-        </a>
-       </h3>
-       <p>
-        {{ trip.city }}
-        <span>
-         &middot;
-        </span>
-        {{ trip.start_date }} &mdash; {{ trip.end_date }}
-        <span>
-         &middot;
-        </span>
-        {{ trip.night_count }}박 {{ trip.day_count }}일
-       </p>
-       <small>
-        {{ trip.place_count }} PLACES SAVED
-       </small>
-      </div>
-      <form action="{{ url_for('delete_trip', trip_id=trip.id) }}" method="post" onsubmit="return confirm('이 여행을 삭제할까요? 관련 장소와 일정도 함께 삭제됩니다.');">
-       <button aria-label="{{ trip.title }} 삭제" class="icon-button" title="여행 삭제">
-        &times;
-       </button>
-      </form>
-     </article>
+     {{ render_trip_card(trip) }}
      {% else %}
      <div class="empty-state">
       <span class="empty-icon">
@@ -164,6 +178,7 @@
     </span>
    </footer>
   </main>
+  <script defer src="{{ url_for('static', filename='js/trip-groups.js') }}"></script>
   {% include '_preserve_scroll.html' %}
  </body>
 </html>

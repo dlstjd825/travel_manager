@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1" name="viewport"/>
   <title>
-   {{ trip.title }} &middot; 여행 플래너
+   {{ trip.title }} &middot; Trip Manager
   </title>
   <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
   <link href="{{ url_for('static', filename='css/trip.css') }}" rel="stylesheet"/>
@@ -16,11 +16,7 @@
      <span class="brand-mark">
       ✳
      </span>
-     roam
-     <span class="brand-light">
-      /
-     </span>
-     plan
+     Trip <span class="brand-light">Manager</span>
     </a>
     <a class="back-link" href="{{ url_for('index') }}">
      &larr; 내 여행
@@ -69,7 +65,7 @@
    <section class="overview-stats">
     <a class="panel overview-stat" href="{{ url_for('trip_transport', trip_id=trip.id) }}">
      <span>
-      항공&middot;기차
+      항공&middot;기차&middot;버스
      </span>
      <strong>
       <span class="count-value">{{ transport_count }}건</span>
@@ -80,7 +76,7 @@
       숙소
      </span>
      <strong>
-      {{ accommodation.name if accommodation else '미등록' }}
+      {{ accommodations|length if accommodations else '미등록' }}{% if accommodations %}곳 등록{% endif %}
      </strong>
     </a>
     <a class="panel overview-stat" href="{{ url_for('trip_places', trip_id=trip.id) }}">
@@ -124,7 +120,8 @@
       </a>
      </div>
      {% if days %}
-     <ol class="overview-day-list">
+     <div class="overview-day-list-scroll">
+      <ol class="overview-day-list">
       {% for day in days %}
       <li>
        <a href="{{ url_for('itinerary_day_detail', trip_id=trip.id, day_number=day.day_number) }}">
@@ -143,7 +140,8 @@
        </a>
       </li>
       {% endfor %}
-     </ol>
+      </ol>
+     </div>
      {% else %}
      <div class="overview-empty">
       <p>
@@ -172,34 +170,61 @@
        추가
       </button>
      </form>
-     {% if todos %}
-     <ul class="todo-list">
-      {% for todo in todos %}
-      <li class="{{ 'is-done' if todo.is_done else '' }}">
-       <form action="{{ url_for('toggle_trip_todo', trip_id=trip.id, todo_id=todo.id) }}" method="post">
-        <button aria-label="{{ '완료 취소' if todo.is_done else '완료 표시' }}" class="todo-check" type="submit">
-         {{ '&checkmark;' if todo.is_done else '' }}
-        </button>
-        <span>
-         {{ todo.title }}
-        </span>
-       </form>
-       <form action="{{ url_for('delete_trip_todo', trip_id=trip.id, todo_id=todo.id) }}" method="post">
-        <button aria-label="할 일 삭제" class="icon-button" type="submit">
-         &times;
-        </button>
-       </form>
-      </li>
-      {% endfor %}
-     </ul>
-     {% else %}
-     <div class="overview-empty">
-      <p>
-       아직 등록한 할 일이 없습니다.
-      </p>
+     <div class="todo-list-scroll">
+      {% if todos %}
+      <ul class="todo-list">
+       {% for todo in todos %}
+       <li class="{{ 'is-done' if todo.is_done else '' }}">
+        <form action="{{ url_for('toggle_trip_todo', trip_id=trip.id, todo_id=todo.id) }}" method="post">
+         <button aria-label="{{ '완료 취소' if todo.is_done else '완료 표시' }}" class="todo-check" type="submit">
+          {{ '✓' if todo.is_done else '' }}
+         </button>
+         <span>{{ todo.title }}</span>
+        </form>
+        <form action="{{ url_for('delete_trip_todo', trip_id=trip.id, todo_id=todo.id) }}" method="post">
+         <button aria-label="할 일 삭제" class="icon-button" type="submit">&times;</button>
+        </form>
+       </li>
+       {% endfor %}
+      </ul>
+      {% else %}
+      <div class="overview-empty">
+       <p>아직 등록한 할 일이 없습니다.</p>
+      </div>
+      {% endif %}
      </div>
-     {% endif %}
     </article>
+   </section>
+   <section class="panel trip-sharing-panel">
+    <div class="panel-heading">
+     <div>
+      <h2>함께 여행하기</h2>
+      <p class="overview-caption">멤버는 이 여행의 일정과 정보를 함께 수정할 수 있어요.</p>
+     </div>
+    </div>
+    <ul class="trip-member-list">
+     {% for member in trip_members %}
+     <li>
+      <span class="trip-member-avatar" aria-hidden="true">{{ member.username[:1]|upper }}</span>
+      <span class="trip-member-name">{{ member.username }}{% if member.user_id == session.get('user_id') %}<small>나</small>{% endif %}</span>
+      <span class="trip-member-role">{{ '소유자' if member.role == 'owner' else '편집자' }}</span>
+      {% if trip_role == 'owner' and member.role != 'owner' %}
+      <form action="{{ url_for('remove_trip_member', trip_id=trip.id, member_id=member.user_id) }}" method="post" onsubmit="return confirm('이 멤버를 여행에서 제거할까요?');">
+       <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+       <button class="text-button" type="submit">제거</button>
+      </form>
+      {% endif %}
+     </li>
+     {% endfor %}
+    </ul>
+    {% if trip_role == 'owner' %}
+    <form class="trip-invite-form" action="{{ url_for('invite_trip_member', trip_id=trip.id) }}" method="post">
+     <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+     <label for="invite-username">아이디로 초대</label>
+     <input id="invite-username" name="username" minlength="3" maxlength="24" placeholder="함께 여행할 사람의 아이디" required/>
+     <button class="primary-button" type="submit">초대 보내기</button>
+    </form>
+    {% endif %}
    </section>
    <footer>
     MADE FOR THE JOURNEY
