@@ -33,3 +33,7 @@ Maps Demo Key는 청구 정보 없이 시제품을 시험하기 위한 키이며
 동적 지도는 월 10,000회까지 무료 사용량이 제공되며, 이후 첫 요금 구간은 1,000회당 미화 $7입니다. 사용량과 요금은 Google Maps Platform 가격표에서 확인하세요.
 
 검색 결과를 선택하면 좌표와 Place ID가 여행에 연결됩니다. 장소 이름과 주소는 개인 메모로 직접 입력합니다. Google Place ID는 저장하며, Google에서 받은 좌표는 저장 후 30일이 지나면 자동으로 지웁니다.
+
+## Oracle Cloud 배포
+
+SQLite 데이터와 업로드 파일을 유지한 채 배포하려면 [Oracle Cloud 배포 안내](docs/deploy-oracle-cloud.md)를 참고하세요. Vercel 함수처럼 읽기 전용 파일시스템에서 실행하는 플랫폼에는 현재 로컬 SQLite/업로드 저장 방식이 적합하지 않습니다.

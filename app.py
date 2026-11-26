@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from flask import Flask, abort, flash, g, redirect, render_template, request, send_from_directory, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from database.db import get_db, init_app, query_db
 from services.itinerary import optimize_day_order, recommend_itinerary
@@ -21,9 +22,20 @@ from services.place_search import PlaceSearchError, search_places
 
 def create_app(test_config=None):
     load_dotenv()
-    app = Flask(__name__, instance_relative_config=True)
+    app_environment = os.environ.get("APP_ENV", "development").strip().lower()
+    secret_key = os.environ.get("SECRET_KEY")
+    if app_environment == "production" and not secret_key:
+        raise RuntimeError("SECRET_KEY must be set when APP_ENV=production")
+
+    app = Flask(
+        __name__,
+        instance_relative_config=True,
+        instance_path=os.environ.get("INSTANCE_PATH") or None,
+    )
     app.config.from_mapping(
-        SECRET_KEY=os.environ.get("SECRET_KEY") or os.urandom(32),
+        SECRET_KEY=secret_key or os.urandom(32),
+        ALLOW_REGISTRATION=os.environ.get("ALLOW_REGISTRATION", "true").strip().lower()
+        in {"1", "true", "yes", "on"},
         DATABASE=app.instance_path + "/travel.db",
         MAX_CONTENT_LENGTH=32 * 1024 * 1024,
         EXPENSE_UPLOAD_FOLDER=os.path.join(app.instance_path, "expense_uploads"),
@@ -37,7 +49,13 @@ def create_app(test_config=None):
     )
     if test_config:
         app.config.update(test_config)
-    app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
+    # The production Nginx proxy is the only trusted proxy in front of Gunicorn.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+    app.config.update(
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+        SESSION_COOKIE_SECURE=app_environment == "production",
+    )
 
     init_app(app)
     os.makedirs(app.config["EXPENSE_UPLOAD_FOLDER"], exist_ok=True)
@@ -78,6 +96,9 @@ def create_app(test_config=None):
 
     @app.route("/register", methods=["GET", "POST"])
     def register():
+        if not app.config["ALLOW_REGISTRATION"]:
+            flash("현재 회원가입이 닫혀 있습니다. 여행 관리자에게 계정 생성을 요청해 주세요.", "error")
+            return redirect(url_for("login"))
         if session.get("user_id"):
             return redirect(url_for("index"))
         if request.method == "POST":
