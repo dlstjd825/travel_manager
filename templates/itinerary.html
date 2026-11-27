@@ -7,7 +7,7 @@
    {{ trip.title }} 일정 &middot; Trip Manager
   </title>
   <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
-  <link href="{{ url_for('static', filename='css/itinerary.css') }}" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/itinerary.css', v='2') }}" rel="stylesheet"/>
  </head>
  <body>
   <main class="shell">
@@ -36,11 +36,6 @@
      </p>
     </div>
     <div class="itinerary-actions">
-     {% if not accommodations %}
-     <a class="secondary-button itinerary-accommodation-link" href="{{ url_for('trip_accommodation', trip_id=trip.id) }}">
-      숙소 추가
-     </a>
-     {% endif %}
      {% if selected_region %}
      <form action="{{ url_for('recommend_region_itinerary', trip_id=trip.id, region_id=selected_region.id) }}" method="post">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
@@ -127,7 +122,7 @@
     {% endfor %}
    </div>
    {% endif %}{% endwith %}
-   <div class="itinerary-layout">
+   <div class="itinerary-layout {{ 'itinerary-layout-empty' if not has_itinerary else '' }}">
     <div class="itinerary-schedule-column">
      {% if has_itinerary %}
      <div class="itinerary-global-actions">
