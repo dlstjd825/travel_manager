@@ -3,7 +3,7 @@
  <article class="trip-card{% if trip.source_trips %} is-merged-trip{% endif %}">
   <div class="trip-date"><span>{{ trip.start_date[5:7] }}</span><small>{{ trip.start_date[0:4] }}</small></div>
   <div class="trip-details">
-   <h3><a class="trip-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">{{ trip.title }} &nearrow;</a>{% if trip.source_trips %}<span class="trip-merged-badge">병합 여행</span>{% endif %}</h3>
+   <h3><a class="trip-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">{{ trip.title }} &nearrow;</a>{% if trip.source_trips %}<span class="trip-merged-badge">기존 통합 여행</span>{% endif %}</h3>
    <p>{{ trip.city }} <span>&middot;</span> {{ trip.start_date }} &mdash; {{ trip.end_date }} <span>&middot;</span> {{ trip.night_count }}박 {{ trip.day_count }}일</p>
    <small>{{ trip.place_count }} PLACES SAVED</small>
   </div>
@@ -33,7 +33,7 @@
    Trip Manager
   </title>
   <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
-  <link href="{{ url_for('static', filename='css/index.css') }}" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/index.css', v='2') }}" rel="stylesheet"/>
  </head>
  <body>
   <main class="shell">
@@ -114,11 +114,6 @@
       <span class="count">
        {{ '%02d'|format(all_trip_count) }} TRIPS
       </span>
-      {% if all_trip_count > 1 %}
-      <a class="secondary-button merge-trip-link" href="{{ url_for('merge_trips_page') }}">
-       여행 병합
-      </a>
-      {% endif %}
      </div>
     </div>
     <div class="trip-list">
@@ -153,8 +148,8 @@
        <input maxlength="100" name="title" placeholder="예: 여름 도쿄 여행" required=""/>
       </label>
       <label>
-       여행 도시
-       <input maxlength="100" name="city" placeholder="예: Tokyo, Japan" required=""/>
+       대표 도시/지역
+       <input maxlength="100" name="city" placeholder="예: 유럽, 도쿄, 프라하" required=""/>
       </label>
       <div class="date-row">
        <label>

@@ -5,7 +5,7 @@
   <meta content="width=device-width, initial-scale=1" name="viewport"/>
   <title>숙소 · {{ trip.title }}</title>
   <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
-  <link href="{{ url_for('static', filename='css/trip.css') }}" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/trip.css', v='4') }}" rel="stylesheet"/>
  </head>
  <body>
   <main class="shell trip-module-page">
@@ -35,6 +35,9 @@
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
      <input name="target" type="hidden" value="accommodation"/>
      <input name="accommodation_id" type="hidden" value="{{ editing_accommodation_id }}"/>
+     {% if regions %}
+     <label>검색 국가/지역<select name="region_id"><option value="">대표 여행지 기준</option>{% for region in regions %}<option value="{{ region.id }}" {% if region.id|string == selected_region_id|string %}selected{% endif %}>{{ region.label }}</option>{% endfor %}</select></label>
+     {% endif %}
      <label>숙소 검색<input name="query" placeholder="숙소 이름이나 주소" required value="{{ accommodation_search_query }}"/></label>
      <button class="secondary-button" type="submit">검색</button>
     </form>
@@ -59,7 +62,7 @@
      <label>숙소명<input maxlength="150" name="name" placeholder="검색 결과를 선택하세요" required value="{{ editing_accommodation.name if editing_accommodation else '' }}" {% if not editing_accommodation %}disabled{% endif %}/></label>
      <label>주소<input maxlength="300" name="address" placeholder="검색 결과의 주소" required value="{{ editing_accommodation.address if editing_accommodation else '' }}" {% if not editing_accommodation %}disabled{% endif %}/></label>
      {% if regions %}
-     <label>국가/지역<select name="region_id"><option value="">선택 안 함</option>{% for region in regions %}<option value="{{ region.id }}" {% if editing_accommodation and editing_accommodation.region_id == region.id %}selected{% endif %}>{{ region.label }}</option>{% endfor %}</select></label>
+     <label>국가/지역<select name="region_id"><option value="">선택 안 함</option>{% for region in regions %}<option value="{{ region.id }}" {% if editing_accommodation and editing_accommodation.region_id == region.id or not editing_accommodation and region.id|string == selected_region_id|string %}selected{% endif %}>{{ region.label }}</option>{% endfor %}</select></label>
      {% endif %}
      <div class="accommodation-date-row">
       <label>체크인<input max="{{ trip.end_date }}" min="{{ trip.start_date }}" name="check_in_date" required type="date" value="{{ editing_accommodation.check_in_date if editing_accommodation and editing_accommodation.check_in_date else '' }}" {% if not editing_accommodation %}disabled{% endif %}/></label>

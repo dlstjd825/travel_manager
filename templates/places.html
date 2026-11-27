@@ -7,7 +7,7 @@
    가고 싶은 장소 &middot; {{ trip.title }}
   </title>
   <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
-  <link href="{{ url_for('static', filename='css/trip.css') }}" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/trip.css', v='4') }}" rel="stylesheet"/>
  </head>
  <body>
   <main class="shell trip-module-page">
@@ -70,6 +70,14 @@
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
       <input name="target" type="hidden" value="places"/>
       <input id="search-category" name="category" type="hidden" value="{{ place_search_category }}"/>
+      {% if regions %}
+      <label>검색 국가/지역
+       <select name="region_id">
+        <option value="">대표 여행지 기준</option>
+        {% for region in regions %}<option value="{{ region.id }}" {% if region.id|string == selected_region_id|string %}selected{% endif %}>{{ region.label }}</option>{% endfor %}
+       </select>
+      </label>
+      {% endif %}
       <label>
        <span id="place-search-label">
         {{ '식당 검색' if place_search_category == 'restaurant' else '관광지 검색' }}
@@ -124,7 +132,7 @@
        국가/지역
        <select name="region_id">
         <option value="">선택 안 함</option>
-        {% for region in regions %}<option value="{{ region.id }}">{{ region.label }}</option>{% endfor %}
+        {% for region in regions %}<option value="{{ region.id }}" {% if region.id|string == selected_region_id|string %}selected{% endif %}>{{ region.label }}</option>{% endfor %}
        </select>
       </label>
       {% endif %}

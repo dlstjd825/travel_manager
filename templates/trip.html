@@ -7,7 +7,7 @@
    {{ trip.title }} &middot; Trip Manager
   </title>
   <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
-  <link href="{{ url_for('static', filename='css/trip.css', v='2') }}" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/trip.css', v='4') }}" rel="stylesheet"/>
  </head>
  <body>
   <main class="shell trip-overview-page">
@@ -110,6 +110,76 @@
       <span class="count-value">{{ journal_place_count }}곳</span>
      </strong>
     </a>
+   </section>
+   <section class="panel trip-regions-panel">
+    <div class="panel-heading">
+     <div>
+      <h2>국가별 체류 구간</h2>
+      <p class="overview-caption">전체 여행 기간 안에서 국가/지역별 체류 날짜를 정하고 일정을 나눠 계획하세요.</p>
+     </div>
+    </div>
+    {% if regions %}
+    <div class="trip-region-list">
+     {% for region in regions %}
+     <details class="trip-region-item">
+      <summary><strong>{{ region.label }}</strong><span>{{ region.start_date }} — {{ region.end_date }}</span></summary>
+      <form action="{{ url_for('update_trip_region', trip_id=trip.id, region_id=region.id) }}" class="trip-region-form" method="post">
+       <input name="csrf_token" type="hidden" value="{{ csrf_token }}"/>
+       <label>국가/지역명<input maxlength="100" name="label" required value="{{ region.label }}"/></label>
+       <label>시작일<input max="{{ trip.end_date }}" min="{{ trip.start_date }}" name="start_date" required type="date" value="{{ region.start_date }}"/></label>
+       <label>종료일<input max="{{ trip.end_date }}" min="{{ trip.start_date }}" name="end_date" required type="date" value="{{ region.end_date }}"/></label>
+       <button class="primary-button" type="submit">구간 저장</button>
+      </form>
+      <div class="trip-region-actions">
+       <a class="secondary-button" href="{{ url_for('trip_itinerary', trip_id=trip.id, region_id=region.id) }}">이 구간 일정 보기</a>
+       <form action="{{ url_for('delete_trip_region', trip_id=trip.id, region_id=region.id) }}" method="post" onsubmit="return confirm('{{ region.label }} 구간을 삭제할까요? 연결된 장소와 숙소는 삭제되지 않습니다.');">
+        <input name="csrf_token" type="hidden" value="{{ csrf_token }}"/>
+        <button class="text-button" type="submit">구간 삭제</button>
+       </form>
+      </div>
+     </details>
+     {% endfor %}
+    </div>
+    {% else %}
+    <p class="trip-regions-empty">아직 국가별 구간이 없습니다. 구간을 추가한 뒤 장소와 숙소를 등록할 때 해당 국가/지역을 선택하세요.</p>
+    {% endif %}
+    <form action="{{ url_for('add_trip_region', trip_id=trip.id) }}" class="trip-region-form trip-region-add-form" method="post">
+     <input name="csrf_token" type="hidden" value="{{ csrf_token }}"/>
+     <label>국가/지역명<input maxlength="100" name="label" placeholder="예: 체코 · 프라하" required/></label>
+     <label>시작일<input max="{{ trip.end_date }}" min="{{ trip.start_date }}" name="start_date" required type="date" value="{{ trip.start_date }}"/></label>
+     <label>종료일<input max="{{ trip.end_date }}" min="{{ trip.start_date }}" name="end_date" required type="date" value="{{ trip.end_date }}"/></label>
+     <button class="primary-button" type="submit">국가 구간 추가</button>
+    </form>
+    {% if regions|length > 1 %}
+    <div class="country-transfer-manager">
+     <div class="country-transfer-heading">
+      <h3>국가 간 이동</h3>
+      <p class="overview-caption">두 국가/지역 구간이 겹치는 날짜를 골라 이동을 일정에 넣으세요.</p>
+     </div>
+     {% if country_transfers %}
+     <ul class="country-transfer-list">
+      {% for transfer in country_transfers %}
+      <li>
+       <span><strong>{{ transfer.date }} · {{ transfer.from_region_label or transfer.origin }} → {{ transfer.to_region_label or transfer.destination }}</strong><small>{{ transfer.origin }} → {{ transfer.destination }}</small></span>
+       <form action="{{ url_for('delete_country_transfer', trip_id=trip.id, transfer_id=transfer.id) }}" method="post" onsubmit="return confirm('이 국가 간 이동을 일정에서 삭제할까요?');">
+        <input name="csrf_token" type="hidden" value="{{ csrf_token }}"/>
+        <button class="text-button" type="submit">삭제</button>
+       </form>
+      </li>
+      {% endfor %}
+     </ul>
+     {% endif %}
+     <form action="{{ url_for('add_country_transfer', trip_id=trip.id) }}" class="country-transfer-form" method="post">
+      <input name="csrf_token" type="hidden" value="{{ csrf_token }}"/>
+      <label>이전 국가/지역<select name="from_region_id" required><option value="">선택</option>{% for region in regions %}<option value="{{ region.id }}">{{ region.label }}</option>{% endfor %}</select></label>
+      <label>이동할 국가/지역<select name="to_region_id" required><option value="">선택</option>{% for region in regions %}<option value="{{ region.id }}">{{ region.label }}</option>{% endfor %}</select></label>
+      <label>이동일<input max="{{ trip.end_date }}" min="{{ trip.start_date }}" name="date" required type="date"/></label>
+      <label>출발지<input maxlength="180" name="origin" placeholder="선택 입력"/></label>
+      <label>도착지<input maxlength="180" name="destination" placeholder="선택 입력"/></label>
+      <button class="primary-button" type="submit">이동 일정 추가</button>
+     </form>
+    </div>
+    {% endif %}
    </section>
    <section class="overview-grid">
     <article class="panel overview-schedule">
