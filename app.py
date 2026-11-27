@@ -470,6 +470,120 @@ def create_app(test_config=None):
     def merge_trips_page():
         flash("여행 병합 대신 각 여행 개요에서 국가별 체류 구간을 추가해 주세요.", "info")
         return redirect(url_for("index"))
+
+    def sync_country_transfers(connection, trip_id):
+        trip = connection.execute(
+            "SELECT start_date, end_date FROM trips WHERE id = ?", (trip_id,)
+        ).fetchone()
+        if trip is None:
+            return
+        regions = connection.execute(
+            "SELECT id, label, start_date, end_date FROM trip_regions WHERE trip_id = ? "
+            "ORDER BY start_date, sort_order, id", (trip_id,),
+        ).fetchall()
+        desired = {}
+        for origin_region, destination_region in zip(regions, regions[1:]):
+            overlap_start = max(origin_region["start_date"], destination_region["start_date"])
+            overlap_end = min(origin_region["end_date"], destination_region["end_date"])
+            if overlap_start <= overlap_end:
+                desired[(origin_region["id"], destination_region["id"])] = {
+                    "date": overlap_start,
+                    "origin": origin_region["label"],
+                    "destination": destination_region["label"],
+                }
+        if not desired:
+            connection.execute(
+                "DELETE FROM itinerary_transfers WHERE trip_id = ? "
+                "AND from_region_id IS NOT NULL AND to_region_id IS NOT NULL", (trip_id,),
+            )
+            return
+
+        trip_start = date.fromisoformat(trip["start_date"])
+        trip_end = date.fromisoformat(trip["end_date"])
+        day_rows = connection.execute(
+            "SELECT id, day_number, date FROM itinerary_days WHERE trip_id = ?", (trip_id,)
+        ).fetchall()
+        day_by_date = {row["date"]: row for row in day_rows}
+        required_dates = {entry["date"] for entry in desired.values()}
+        missing_dates = required_dates - day_by_date.keys()
+        if missing_dates:
+            if not day_rows:
+                dates = [
+                    (trip_start + timedelta(days=offset)).isoformat()
+                    for offset in range((trip_end - trip_start).days + 1)
+                ]
+                for day_number, day_date in enumerate(dates, 1):
+                    cursor = connection.execute(
+                        "INSERT INTO itinerary_days (trip_id, day_number, date) VALUES (?, ?, ?)",
+                        (trip_id, day_number, day_date),
+                    )
+                    day_by_date[day_date] = {"id": cursor.lastrowid, "date": day_date}
+            else:
+                connection.execute(
+                    "UPDATE itinerary_days SET day_number = day_number + 1000000 WHERE trip_id = ?",
+                    (trip_id,),
+                )
+                date_to_id = {row["date"]: row["id"] for row in day_rows}
+                total_days = (trip_end - trip_start).days + 1
+                for offset in range(total_days):
+                    day_date = (trip_start + timedelta(days=offset)).isoformat()
+                    day_number = offset + 1
+                    if day_date in date_to_id:
+                        connection.execute(
+                            "UPDATE itinerary_days SET day_number = ? WHERE id = ?",
+                            (day_number, date_to_id[day_date]),
+                        )
+                        day_by_date[day_date] = {"id": date_to_id[day_date], "date": day_date}
+                    else:
+                        cursor = connection.execute(
+                            "INSERT INTO itinerary_days (trip_id, day_number, date) VALUES (?, ?, ?)",
+                            (trip_id, day_number, day_date),
+                        )
+                        day_by_date[day_date] = {"id": cursor.lastrowid, "date": day_date}
+
+        existing_rows = connection.execute(
+            """SELECT id, day_id, from_region_id, to_region_id FROM itinerary_transfers
+               WHERE trip_id = ? AND from_region_id IS NOT NULL AND to_region_id IS NOT NULL
+               ORDER BY id""", (trip_id,),
+        ).fetchall()
+        retained_pairs = set()
+        for row in existing_rows:
+            pair = (row["from_region_id"], row["to_region_id"])
+            if pair not in desired or pair in retained_pairs:
+                connection.execute("DELETE FROM itinerary_transfers WHERE id = ?", (row["id"],))
+                continue
+            retained_pairs.add(pair)
+            entry = desired[pair]
+            day_id = day_by_date[entry["date"]]["id"]
+            destination_item = connection.execute(
+                """SELECT ii.id FROM itinerary_items ii JOIN places p ON p.id = ii.place_id
+                   WHERE ii.day_id = ? AND p.region_id = ? ORDER BY ii.sequence LIMIT 1""",
+                (day_id, pair[1]),
+            ).fetchone()
+            connection.execute(
+                """UPDATE itinerary_transfers SET day_id = ?, before_item_id = ?, origin = ?, destination = ?
+                   WHERE id = ?""",
+                (day_id, destination_item["id"] if destination_item else None,
+                 entry["origin"], entry["destination"], row["id"]),
+            )
+
+        for pair, entry in desired.items():
+            if pair in retained_pairs:
+                continue
+            day_id = day_by_date[entry["date"]]["id"]
+            destination_item = connection.execute(
+                """SELECT ii.id FROM itinerary_items ii JOIN places p ON p.id = ii.place_id
+                   WHERE ii.day_id = ? AND p.region_id = ? ORDER BY ii.sequence LIMIT 1""",
+                (day_id, pair[1]),
+            ).fetchone()
+            connection.execute(
+                """INSERT INTO itinerary_transfers
+                   (trip_id, day_id, before_item_id, from_region_id, to_region_id, origin, destination)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (trip_id, day_id, destination_item["id"] if destination_item else None,
+                 pair[0], pair[1], entry["origin"], entry["destination"]),
+            )
+
     @app.get("/trips/<int:trip_id>")
     def trip_detail(trip_id):
         trip = query_db("SELECT * FROM trips WHERE id = ?", (trip_id,), one=True)
@@ -537,16 +651,6 @@ def create_app(test_config=None):
                WHERE tm.trip_id = ? ORDER BY CASE tm.role WHEN 'owner' THEN 0 ELSE 1 END, u.username COLLATE NOCASE""",
             (trip_id,),
         )
-        country_transfers = query_db(
-            """SELECT it.id, it.origin, it.destination, d.date,
-                      fr.label AS from_region_label, tr.label AS to_region_label
-               FROM itinerary_transfers it
-               JOIN itinerary_days d ON d.id = it.day_id
-               LEFT JOIN trip_regions fr ON fr.id = it.from_region_id
-               LEFT JOIN trip_regions tr ON tr.id = it.to_region_id
-               WHERE it.trip_id = ? ORDER BY d.date, it.created_at, it.id""",
-            (trip_id,),
-        )
         start = date.fromisoformat(trip["start_date"])
         end = date.fromisoformat(trip["end_date"])
         return render_template(
@@ -554,12 +658,34 @@ def create_app(test_config=None):
             expense_summary=expense_summary, place_count=place_count, transport_count=transport_count,
             journal_place_count=journal_place_count,
             trip_members=trip_members, trip_role=g.trip_role,
-            country_transfers=country_transfers,
-            regions=query_db(
-                "SELECT * FROM trip_regions WHERE trip_id = ? ORDER BY start_date, sort_order, id",
-                (trip_id,),
-            ),
             day_count=(end - start).days + 1, night_count=(end - start).days,
+        )
+
+    @app.get("/trips/<int:trip_id>/regions")
+    def trip_regions_page(trip_id):
+        trip = query_db("SELECT * FROM trips WHERE id = ?", (trip_id,), one=True)
+        if trip is None:
+            abort(404)
+        regions = query_db(
+            "SELECT * FROM trip_regions WHERE trip_id = ? ORDER BY start_date, sort_order, id",
+            (trip_id,),
+        )
+        country_transfers = query_db(
+            """SELECT it.id, it.origin, it.destination, d.date,
+                      fr.label AS from_region_label, tr.label AS to_region_label
+               FROM itinerary_transfers it
+               JOIN itinerary_days d ON d.id = it.day_id
+               LEFT JOIN trip_regions fr ON fr.id = it.from_region_id
+               LEFT JOIN trip_regions tr ON tr.id = it.to_region_id
+               WHERE it.trip_id = ? AND it.from_region_id IS NOT NULL AND it.to_region_id IS NOT NULL
+               ORDER BY d.date, it.id""",
+            (trip_id,),
+        )
+        default_region_start = regions[-1]["end_date"] if regions else trip["start_date"]
+        return render_template(
+            "trip_regions.html", trip=trip, regions=regions,
+            country_transfers=country_transfers,
+            new_region_start=default_region_start, new_region_end=trip["end_date"],
         )
 
     @app.post("/trips/<int:trip_id>/regions")
@@ -575,10 +701,10 @@ def create_app(test_config=None):
             trip_end = date.fromisoformat(trip["end_date"])
         except ValueError:
             flash("국가별 구간의 시작일과 종료일을 확인해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
+            return redirect(url_for("trip_regions_page", trip_id=trip_id))
         if not label or region_end < region_start or region_start < trip_start or region_end > trip_end:
             flash("국가/지역 이름과 여행 기간 안의 날짜를 확인해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
+            return redirect(url_for("trip_regions_page", trip_id=trip_id))
         db = get_db()
         try:
             sort_order = db.execute(
@@ -589,13 +715,14 @@ def create_app(test_config=None):
                 "INSERT INTO trip_regions (trip_id, label, start_date, end_date, sort_order) VALUES (?, ?, ?, ?, ?)",
                 (trip_id, label, region_start.isoformat(), region_end.isoformat(), sort_order),
             )
+            sync_country_transfers(db, trip_id)
             db.commit()
         except sqlite3.IntegrityError:
             db.rollback()
             flash("이미 같은 이름의 국가/지역 구간이 있습니다.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
+            return redirect(url_for("trip_regions_page", trip_id=trip_id))
         flash(f"{label} 구간을 여행에 추가했습니다. 장소와 숙소를 등록할 때 이 구간을 선택하세요.", "success")
-        return redirect(url_for("trip_detail", trip_id=trip_id))
+        return redirect(url_for("trip_regions_page", trip_id=trip_id))
 
     @app.post("/trips/<int:trip_id>/regions/<int:region_id>/update")
     def update_trip_region(trip_id, region_id):
@@ -613,128 +740,42 @@ def create_app(test_config=None):
             trip_end = date.fromisoformat(trip["end_date"])
         except ValueError:
             flash("국가별 구간의 시작일과 종료일을 확인해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
+            return redirect(url_for("trip_regions_page", trip_id=trip_id))
         if not label or region_end < region_start or region_start < trip_start or region_end > trip_end:
             flash("국가/지역 이름과 여행 기간 안의 날짜를 확인해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
+            return redirect(url_for("trip_regions_page", trip_id=trip_id))
         try:
             db = get_db()
             db.execute(
                 "UPDATE trip_regions SET label = ?, start_date = ?, end_date = ? WHERE id = ? AND trip_id = ?",
                 (label, region_start.isoformat(), region_end.isoformat(), region_id, trip_id),
             )
+            sync_country_transfers(db, trip_id)
             db.commit()
         except sqlite3.IntegrityError:
             get_db().rollback()
             flash("이미 같은 이름의 국가/지역 구간이 있습니다.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
+            return redirect(url_for("trip_regions_page", trip_id=trip_id))
         flash(f"{label} 구간을 수정했습니다.", "success")
-        return redirect(url_for("trip_detail", trip_id=trip_id))
+        return redirect(url_for("trip_regions_page", trip_id=trip_id))
 
     @app.post("/trips/<int:trip_id>/regions/<int:region_id>/delete")
     def delete_trip_region(trip_id, region_id):
-        cursor = get_db().execute(
+        db = get_db()
+        db.execute(
+            "DELETE FROM itinerary_transfers WHERE trip_id = ? AND (from_region_id = ? OR to_region_id = ?)",
+            (trip_id, region_id, region_id),
+        )
+        cursor = db.execute(
             "DELETE FROM trip_regions WHERE id = ? AND trip_id = ?", (region_id, trip_id)
         )
-        get_db().commit()
+        if cursor.rowcount:
+            sync_country_transfers(db, trip_id)
+        db.commit()
         if cursor.rowcount == 0:
             abort(404)
         flash("국가 구간을 삭제했습니다. 연결된 장소와 숙소 정보는 여행에 남아 있습니다.", "success")
-        return redirect(url_for("trip_detail", trip_id=trip_id))
-
-    @app.post("/trips/<int:trip_id>/country-transfers")
-    def add_country_transfer(trip_id):
-        trip = query_db("SELECT start_date, end_date FROM trips WHERE id = ?", (trip_id,), one=True)
-        if trip is None:
-            abort(404)
-        try:
-            from_region_id = int(request.form.get("from_region_id", ""))
-            to_region_id = int(request.form.get("to_region_id", ""))
-            transfer_date = date.fromisoformat(request.form.get("date", ""))
-        except ValueError:
-            flash("국가 간 이동 구간과 날짜를 확인해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
-        if from_region_id == to_region_id:
-            flash("서로 다른 국가/지역을 선택해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
-        regions_by_id = {
-            row["id"]: row for row in query_db(
-                "SELECT id, label, start_date, end_date FROM trip_regions WHERE trip_id = ?",
-                (trip_id,),
-            )
-        }
-        from_region = regions_by_id.get(from_region_id)
-        to_region = regions_by_id.get(to_region_id)
-        if from_region is None or to_region is None:
-            flash("국가/지역 선택을 확인해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
-        if not (
-            date.fromisoformat(trip["start_date"]) <= transfer_date <= date.fromisoformat(trip["end_date"])
-            and date.fromisoformat(from_region["start_date"]) <= transfer_date <= date.fromisoformat(from_region["end_date"])
-            and date.fromisoformat(to_region["start_date"]) <= transfer_date <= date.fromisoformat(to_region["end_date"])
-        ):
-            flash("이동 날짜는 두 국가/지역 구간에 모두 포함되는 날짜여야 합니다.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
-
-        db = get_db()
-        try:
-            day_rows = db.execute(
-                "SELECT id, date FROM itinerary_days WHERE trip_id = ?", (trip_id,)
-            ).fetchall()
-            day_by_date = {row["date"]: row["id"] for row in day_rows}
-            if not day_rows:
-                trip_start = date.fromisoformat(trip["start_date"])
-                for offset in range((date.fromisoformat(trip["end_date"]) - trip_start).days + 1):
-                    current_date = (trip_start + timedelta(days=offset)).isoformat()
-                    cursor = db.execute(
-                        "INSERT INTO itinerary_days (trip_id, day_number, date) VALUES (?, ?, ?)",
-                        (trip_id, offset + 1, current_date),
-                    )
-                    day_by_date[current_date] = cursor.lastrowid
-            day_id = day_by_date.get(transfer_date.isoformat())
-            if day_id is None:
-                raise ValueError("이동 날짜에 해당하는 일정표가 없습니다.")
-            duplicate = db.execute(
-                """SELECT id FROM itinerary_transfers
-                   WHERE trip_id = ? AND day_id = ? AND from_region_id = ? AND to_region_id = ? LIMIT 1""",
-                (trip_id, day_id, from_region_id, to_region_id),
-            ).fetchone()
-            if duplicate:
-                db.rollback()
-                flash("같은 국가 간 이동이 이미 등록되어 있습니다.", "error")
-                return redirect(url_for("trip_detail", trip_id=trip_id))
-            destination_item = db.execute(
-                """SELECT ii.id FROM itinerary_items ii JOIN places p ON p.id = ii.place_id
-                   WHERE ii.day_id = ? AND p.region_id = ? ORDER BY ii.sequence LIMIT 1""",
-                (day_id, to_region_id),
-            ).fetchone()
-            origin = request.form.get("origin", "").strip()[:180] or from_region["label"]
-            destination = request.form.get("destination", "").strip()[:180] or to_region["label"]
-            db.execute(
-                """INSERT INTO itinerary_transfers
-                   (trip_id, day_id, before_item_id, from_region_id, to_region_id, origin, destination)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (trip_id, day_id, destination_item["id"] if destination_item else None,
-                 from_region_id, to_region_id, origin, destination),
-            )
-            db.commit()
-        except (sqlite3.Error, ValueError):
-            db.rollback()
-            flash("국가 간 이동을 저장하지 못했습니다. 날짜와 구간을 다시 확인해 주세요.", "error")
-            return redirect(url_for("trip_detail", trip_id=trip_id))
-        flash("국가 간 이동을 일정에 추가했습니다.", "success")
-        return redirect(url_for("trip_detail", trip_id=trip_id))
-
-    @app.post("/trips/<int:trip_id>/country-transfers/<int:transfer_id>/delete")
-    def delete_country_transfer(trip_id, transfer_id):
-        cursor = get_db().execute(
-            "DELETE FROM itinerary_transfers WHERE id = ? AND trip_id = ?", (transfer_id, trip_id)
-        )
-        get_db().commit()
-        if cursor.rowcount == 0:
-            abort(404)
-        flash("국가 간 이동을 삭제했습니다.", "success")
-        return redirect(url_for("trip_detail", trip_id=trip_id))
+        return redirect(url_for("trip_regions_page", trip_id=trip_id))
 
     @app.post("/trips/<int:trip_id>/invitations")
     def invite_trip_member(trip_id):
@@ -2134,6 +2175,7 @@ def create_app(test_config=None):
                     ((start + timedelta(days=region_start_offset)).isoformat(),
                      (start + timedelta(days=region_end_offset)).isoformat(), region["id"]),
                 )
+            sync_country_transfers(db, trip_id)
             db.commit()
         except sqlite3.Error:
             db.rollback()

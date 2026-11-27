@@ -22,7 +22,6 @@
      &larr; 여행 개요
     </a>
    </header>
-   {% set active_page = 'itinerary' %}{% include '_trip_nav.html' %}
    <section class="day-detail-hero">
     <div>
      <span class="day-detail-kicker">
@@ -64,6 +63,7 @@
     </button>
     {% endif %}{% endif %}
    </section>
+   {% set active_page = 'itinerary' %}{% include '_trip_nav.html' %}
    {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}
    <div class="notices">
     {% for category, message in messages %}

@@ -7,7 +7,7 @@
    가고 싶은 장소 &middot; {{ trip.title }}
   </title>
   <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
-  <link href="{{ url_for('static', filename='css/trip.css', v='4') }}" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/trip.css', v='5') }}" rel="stylesheet"/>
  </head>
  <body>
   <main class="shell trip-module-page">
@@ -66,7 +66,7 @@
        식당
       </button>
      </div>
-     <form action="{{ url_for('search_trip_places', trip_id=trip.id) }}" class="search-form" method="post">
+     <form action="{{ url_for('search_trip_places', trip_id=trip.id) }}" class="search-form{% if regions %} search-form-with-region{% endif %}" method="post">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
       <input name="target" type="hidden" value="places"/>
       <input id="search-category" name="category" type="hidden" value="{{ place_search_category }}"/>
@@ -119,6 +119,7 @@
       <input id="place-form-category" name="category" type="hidden" value="{{ place_search_category }}"/>
       <input name="latitude" type="hidden" value=""/>
       <input name="longitude" type="hidden" value=""/>
+      <input id="place-region-id" name="region_id" type="hidden" value="{{ selected_region_id }}"/>
       <label>
        장소 이름
        <input disabled="" maxlength="180" name="name" placeholder="검색 결과를 선택해 주세요" required=""/>
@@ -127,15 +128,6 @@
        주소
        <input disabled="" maxlength="300" name="address" placeholder="검색 결과를 선택하면 주소가 입력됩니다"/>
       </label>
-      {% if regions %}
-      <label>
-       국가/지역
-       <select name="region_id">
-        <option value="">선택 안 함</option>
-        {% for region in regions %}<option value="{{ region.id }}" {% if region.id|string == selected_region_id|string %}selected{% endif %}>{{ region.label }}</option>{% endfor %}
-       </select>
-      </label>
-      {% endif %}
       <button class="primary-button" disabled="" type="submit">
        장소 추가
        <span>

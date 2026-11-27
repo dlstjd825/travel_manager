@@ -63,6 +63,10 @@
   margin: 0 0 12px;
 }
 
+.search-form-with-region {
+  grid-template-columns: minmax(150px, .72fr) minmax(0, 1.28fr) auto;
+}
+
 .search-form label {
   font-size: 13px;
   letter-spacing: .3px;
@@ -70,9 +74,12 @@
   font-weight: 600;
 }
 
-.search-form input {
+.search-form input,
+.search-form select {
+  box-sizing: border-box;
   display: block;
   width: 100%;
+  min-width: 0;
   height: 41px;
   border: 1px solid #e5e9e3;
   border-radius: 7px;
@@ -84,7 +91,8 @@
   outline: none;
 }
 
-.search-form input:focus {
+.search-form input:focus,
+.search-form select:focus {
   border-color: #86a391;
   box-shadow: 0 0 0 3px #86a39120;
 }
@@ -588,6 +596,25 @@
   margin-bottom: 20px;
 }
 
+.trip-regions-heading {
+  align-items: center;
+}
+
+.trip-regions-heading .secondary-button {
+  flex: none;
+}
+
+.trip-region-editor {
+  margin: 0 0 16px;
+  padding: 0 0 4px;
+}
+
+.trip-region-editor .trip-region-add-form {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
 .trip-regions-empty {
   margin: 0 0 16px;
   color: var(--muted);
@@ -689,9 +716,7 @@
 }
 
 .country-transfer-manager {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid #edf0eb;
+  margin: 20px 0;
 }
 
 .country-transfer-heading h3 {
@@ -737,42 +762,15 @@
   margin: 0;
 }
 
-.country-transfer-form {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-items: end;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.country-transfer-form label {
-  display: grid;
-  min-width: 0;
-  gap: 6px;
-  color: #526158;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.country-transfer-form input,
-.country-transfer-form select {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  height: 40px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: #fff;
-  font: inherit;
-}
-
-.country-transfer-form .primary-button {
-  min-height: 40px;
-  margin: 0;
-}
-
 @media (max-width: 760px) {
+  .search-form-with-region {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .search-form-with-region label:first-of-type {
+    grid-column: 1 / -1;
+  }
+
   .trip-region-form {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -785,13 +783,6 @@
     grid-column: 1 / -1;
   }
 
-  .country-transfer-form {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .country-transfer-form .primary-button {
-    grid-column: 1 / -1;
-  }
 }
 
 .markdown-export-actions {
@@ -1437,6 +1428,10 @@
 }
 
 @media (max-width: 640px) {
+  .trip-regions-heading {
+    align-items: flex-start;
+  }
+
   .trip-invite-form {
     grid-template-columns: 1fr;
   }

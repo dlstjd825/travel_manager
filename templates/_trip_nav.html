@@ -8,6 +8,9 @@
  <a class="{{ 'active' if active_page == 'accommodation' else '' }}" href="{{ url_for('trip_accommodation', trip_id=trip.id) }}">
   숙소
  </a>
+ <a class="{{ 'active' if active_page == 'regions' else '' }}" href="{{ url_for('trip_regions_page', trip_id=trip.id) }}">
+  국가 구간
+ </a>
  <a class="{{ 'active' if active_page == 'places' else '' }}" href="{{ url_for('trip_places', trip_id=trip.id) }}">
   장소 추가
  </a>

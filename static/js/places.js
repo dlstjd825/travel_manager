@@ -2,6 +2,15 @@ const categoryButtons = document.querySelectorAll('.category-option');
 const searchCategory = document.getElementById('search-category');
 const formCategory = document.getElementById('place-form-category');
 const searchLabel = document.getElementById('place-search-label');
+const searchRegion = document.querySelector('.search-form select[name="region_id"]');
+const placeRegion = document.getElementById('place-region-id');
+
+const syncPlaceRegion = () => {
+  if (searchRegion && placeRegion) placeRegion.value = searchRegion.value;
+};
+
+searchRegion?.addEventListener('change', syncPlaceRegion);
+syncPlaceRegion();
 
 categoryButtons.forEach((button) => {
   button.addEventListener('click', () => {
@@ -17,6 +26,7 @@ categoryButtons.forEach((button) => {
 
 document.querySelectorAll('.select-location').forEach((button) => {
   button.addEventListener('click', () => {
+    syncPlaceRegion();
     const form = document.getElementById('place-form');
     form.elements.latitude.value = button.dataset.lat;
     form.elements.longitude.value = button.dataset.lng;

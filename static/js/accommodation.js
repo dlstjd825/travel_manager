@@ -1,5 +1,6 @@
 const accommodationForm = document.getElementById('accommodation-form');
 const accommodationSearchForm = document.getElementById('accommodation-search-form');
+const accommodationSearchRegion = accommodationSearchForm?.querySelector('select[name="region_id"]');
 const accommodationEditor = document.getElementById('accommodation-editor');
 const addAccommodationButton = document.getElementById('add-accommodation');
 const setAccommodationEditorOpen = (isOpen) => {
@@ -9,6 +10,15 @@ const setAccommodationEditorOpen = (isOpen) => {
     addAccommodationButton.setAttribute('aria-expanded', String(isOpen));
   }
 };
+
+const syncAccommodationRegion = () => {
+  if (accommodationSearchRegion && accommodationForm?.elements.region_id) {
+    accommodationForm.elements.region_id.value = accommodationSearchRegion.value;
+  }
+};
+
+accommodationSearchRegion?.addEventListener('change', syncAccommodationRegion);
+syncAccommodationRegion();
 
 setAccommodationEditorOpen(Boolean(accommodationEditor && !accommodationEditor.hidden));
 
@@ -40,7 +50,8 @@ if (accommodationForm) {
       accommodationForm.elements.latitude.value = button.dataset.lat;
       accommodationForm.elements.longitude.value = button.dataset.lng;
       accommodationForm.elements.google_place_id.value = button.dataset.placeId;
-      if (accommodationForm.elements.region_id) accommodationForm.elements.region_id.value = button.dataset.regionId;
+      if (accommodationSearchRegion) accommodationSearchRegion.value = button.dataset.regionId || '';
+      syncAccommodationRegion();
       enableEntryFields();
       accommodationForm.querySelector('button[type="submit"]').textContent = '변경 저장';
       if (accommodationSearchForm) accommodationSearchForm.elements.accommodation_id.value = button.dataset.id;
@@ -59,7 +70,7 @@ if (accommodationForm) {
     accommodationForm.elements.google_place_id.value = '';
     accommodationForm.elements.latitude.value = '';
     accommodationForm.elements.longitude.value = '';
-    if (accommodationForm.elements.region_id) accommodationForm.elements.region_id.value = '';
+    syncAccommodationRegion();
     if (accommodationSearchForm) accommodationSearchForm.elements.accommodation_id.value = '';
     accommodationForm.querySelector('button[type="submit"]').textContent = '숙소 저장';
     setAccommodationEditorOpen(true);
@@ -72,6 +83,7 @@ if (accommodationForm) {
 document.querySelectorAll('.select-location').forEach((button) => {
   button.addEventListener('click', () => {
     const form = document.getElementById(button.dataset.form);
+    syncAccommodationRegion();
     form.elements.latitude.value = button.dataset.lat;
     form.elements.longitude.value = button.dataset.lng;
     form.elements.google_place_id.value = button.dataset.placeId;
