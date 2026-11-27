@@ -7,7 +7,7 @@
    {{ trip.title }} &middot; Trip Manager
   </title>
   <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
-  <link href="{{ url_for('static', filename='css/trip.css') }}" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/trip.css', v='2') }}" rel="stylesheet"/>
  </head>
  <body>
   <main class="shell trip-overview-page">
@@ -65,7 +65,7 @@
     {% set active_page = 'overview' %}{% include '_trip_nav.html' %}
    <div class="markdown-export-actions">
     <a class="secondary-button markdown-export-link" href="{{ url_for('export_trip_markdown', trip_id=trip.id) }}">
-     <svg aria-hidden="true" viewbox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+     <svg aria-hidden="true" width="18" height="18" viewbox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
      마크다운으로 내보내기
     </a>
    </div>
