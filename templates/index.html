@@ -9,6 +9,7 @@
   </div>
   {% if trip.member_role == 'owner' %}
   <form action="{{ url_for('delete_trip', trip_id=trip.id) }}" method="post" onsubmit="return confirm('이 여행을 삭제할까요? 관련 장소와 일정도 함께 삭제됩니다.');">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
    <button aria-label="{{ trip.title }} 삭제" class="icon-button" title="여행 삭제">&times;</button>
   </form>
   {% endif %}
@@ -45,7 +46,9 @@
     </a>
     <div class="account-controls">
      <span>{{ session.get('username', '') }}</span>
+     <a href="{{ url_for('account_settings') }}">계정 설정</a>
      <form action="{{ url_for('logout') }}" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
       <button type="submit">로그아웃</button>
      </form>
     </div>
@@ -144,6 +147,7 @@
     </div>
     <aside class="create-card">
      <form action="{{ url_for('create_trip') }}" class="trip-form" method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
       <label>
        여행 이름
        <input maxlength="100" name="title" placeholder="예: 여름 도쿄 여행" required=""/>

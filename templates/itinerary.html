@@ -36,16 +36,22 @@
      </p>
     </div>
     <div class="itinerary-actions">
-     <span id="itinerary-save-status" role="status">
-      {% if selected_region %}선택한 국가의 일정을 보고 있어요.{% else %}장소와 날짜를 드래그해 순서를 바꿀 수 있어요.{% endif %}
-     </span>
      {% if not accommodations %}
      <a class="secondary-button itinerary-accommodation-link" href="{{ url_for('trip_accommodation', trip_id=trip.id) }}">
       숙소 추가
      </a>
      {% endif %}
-     {% if not regions %}
+     {% if selected_region %}
+     <form action="{{ url_for('recommend_region_itinerary', trip_id=trip.id, region_id=selected_region.id) }}" method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+      <button class="primary-button" type="submit">
+       {{ selected_region.label }} 일정 다시 추천
+       <span>&orarr;</span>
+      </button>
+     </form>
+     {% elif not regions %}
      <form action="{{ url_for('recommend_trip_itinerary', trip_id=trip.id) }}" method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
       <button class="primary-button" type="submit">
        일정 다시 추천
        <span>
@@ -73,6 +79,7 @@
      일정 추천 시간 설정
     </summary>
     <form action="{{ url_for('save_recommendation_settings', trip_id=trip.id) }}" method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
      <p>
       교통편 여유 시간과 추천 가능한 하루 시간대를 정합니다. 도착일 기준 시각 이후에 추천 시작 시간이 걸리거나 출발일 기준 시각 이전에 일정이 끝나면 그날은 비워 둡니다.
      </p>
@@ -170,6 +177,7 @@
          </p>
         </div>
         <form action="{{ url_for('add_itinerary_place', trip_id=trip.id) }}" class="unscheduled-add-form" method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
          <input name="place_id" type="hidden" value="{{ place.id }}"/>
          <select aria-label="{{ place.name }} 방문 날짜" name="day_number" required="">
           {% for date_day in days %}
@@ -187,7 +195,7 @@
       </ol>
      </article>
      {% endif %}
-     <section class="day-list" data-reorder-url="{{ url_for('reorder_trip_itinerary', trip_id=trip.id) }}">
+    <section class="day-list" data-reorder-url="{{ url_for('reorder_trip_itinerary', trip_id=trip.id) }}">
       {% for day in days %}
        <article class="day-card" data-day-card="" data-day-number="{{ day.day_number }}">
        <header class="day-header">
@@ -212,72 +220,17 @@
         <button aria-controls="day-schedule-{{ day.day_number }}" aria-expanded="false" aria-label="Day {{ day.day_number }} 일정 펼치기" class="day-card-toggle" type="button">⌄</button>
        </header>
        <div class="day-dropzone" data-date="{{ day.date }}" data-day-number="{{ day.day_number }}" data-detail-url="{{ url_for('itinerary_day_detail', trip_id=trip.id, day_number=day.day_number) }}" hidden id="day-schedule-{{ day.day_number }}">
-        {% if day.accommodations_for_date %}
-        <section aria-label="이 날짜의 숙소" class="day-accommodations">
-         <h3>숙소</h3>
-         <div class="day-accommodation-list">
-          {% for stay in day.accommodations_for_date %}
-          <article class="day-accommodation-card">
-           <strong>{{ stay.name }} <span>{{ '체크인' if stay.check_in_date == day.date else ('체크아웃' if stay.check_out_date == day.date else '숙박') }}</span></strong>
-           <p>{{ stay.address or '주소 미입력' }}</p>
-           <small>체크인 {{ stay.check_in_date }} · 체크아웃 {{ stay.check_out_date }}</small>
-          </article>
-          {% endfor %}
-         </div>
-        </section>
-        {% endif %}
         <ol class="itinerary-stops">
-         {% for item in day['items'] %}
-         {% for transfer in item.transfers_before %}{% include '_itinerary_transfer.html' %}{% endfor %}
-         <li class="itinerary-stop {{ 'is-locked' if item.is_locked else '' }}" data-place-id="{{ item.place_id }}" draggable="{{ 'false' if item.is_locked or selected_region else 'true' }}">
-          {% if not selected_region %}<span aria-hidden="true" class="drag-handle">
-           ⠿
-          </span>{% endif %}
-          <span aria-label="{{ '식당' if item.category == 'restaurant' else '관광지' }}" class="place-pin category-pin {{ 'restaurant-pin' if item.category == 'restaurant' else 'attraction-pin' }}" role="img">
-           {% if item.category == 'restaurant' %}
-           <svg aria-hidden="true" viewbox="0 0 24 24">
-            <path d="M6 3v7m-3-7v4a3 3 0 0 0 6 0V3M6 10v11m10-18v18m0-18c3 2 4 5 4 8h-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
-            </path>
-           </svg>
-           {% else %}
-           <svg aria-hidden="true" viewbox="0 0 24 24">
-            <path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-8h6v8M3 9h18" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
-            </path>
-           </svg>
-           {% endif %}
-          </span>
-          <div class="stop-details">
-           <h3>
-            <a class="place-detail-link" href="{{ url_for('place_detail', trip_id=trip.id, place_id=item.place_id) }}">
-             {{ item.name }}
-            </a>
-           </h3>
-           <p>
-            {{ item.address or '주소 미입력' }}
-           </p>
-           {% if item.latitude is none %}
-           <small class="location-warning">
-            좌표 없음 &middot; 장소 등록 화면에서 위치를 선택해 주세요
-           </small>
-           {% endif %}
-          </div>
-          <form action="{{ url_for('toggle_itinerary_place_lock', trip_id=trip.id, place_id=item.place_id) }}" class="itinerary-row-action itinerary-lock-form" method="post">
-           <button aria-label="{{ item.name }} {{ '고정 해제' if item.is_locked else '순서 고정' }}" class="itinerary-lock-button {{ 'locked' if item.is_locked else '' }}" title="{{ '고정 해제' if item.is_locked else '순서 고정' }}" type="submit">
-            <svg aria-hidden="true" viewbox="0 0 24 24">
-             <path d="{% if item.is_locked %}M7 10V7a5 5 0 0 1 10 0v3{% else %}M8 10V7a5 5 0 0 1 9.6-1.5{% endif %}M6 10h12v11H6z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
-             </path>
-            </svg>
-           </button>
-          </form>
-          <form action="{{ url_for('remove_itinerary_place', trip_id=trip.id, place_id=item.place_id) }}" class="itinerary-row-action itinerary-delete-form" method="post" onsubmit="return confirm('{{ item.name }}을(를) 일정에서 제외할까요?');">
-           <button aria-label="{{ item.name }} 일정에서 제거" class="icon-button" title="일정에서 제거" type="submit">
-            &times;
-           </button>
-          </form>
-         </li>
-         {% for transfer in item.transfers_after %}{% include '_itinerary_transfer.html' %}{% endfor %}
+         {% for event in day.timeline %}
+          {% if event.kind == 'stay' %}
+           {% set event_draggable = false %}
+           {% include '_itinerary_stay_event.html' %}
+          {% elif event.kind == 'transfer' %}
+           {% set transfer = event.transfer %}{% set event_key = event.key %}{% include '_itinerary_transfer.html' %}
+          {% else %}
+           {% set item = event.item %}{% set event_key = event.key %}{% include '_itinerary_place_event.html' %}
+          {% endif %}
          {% endfor %}
-         {% for transfer in day.transfers_after %}{% include '_itinerary_transfer.html' %}{% endfor %}
         </ol>
         <div class="free-day" {% if day['items'] %}hidden{% endif %}>
          <span>

@@ -46,6 +46,7 @@
     </div>
     {% if not has_regions %}{% if items|length > 1 %}
     <form action="{{ url_for('optimize_itinerary_day', trip_id=trip.id, day_number=day_number) }}" method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
      <input name="return_to_day" type="hidden" value="1"/>
      <button class="primary-button" type="submit">
       방문 순서 추천하기
@@ -81,19 +82,26 @@
        </h2>
       </div>
       <span class="itinerary-save-status" id="day-save-status" role="status">
-       장소를 드래그해 순서를 바꿀 수 있어요.
+       방문지와 숙소 카드를 드래그해 순서를 바꿀 수 있어요.
       </span>
      </div>
-     {% if items %}
-     <ol class="itinerary-stops day-detail-stops" data-reorder-url="{{ url_for('reorder_itinerary_day', trip_id=trip.id, day_number=day_number) }}" id="day-stop-list">
-      {% for item in items %}
-      {% for transfer in item.transfers_before %}{% include '_itinerary_transfer.html' %}{% endfor %}
-      <li class="itinerary-stop day-detail-stop {{ 'is-locked' if item.is_locked else '' }}" data-place-id="{{ item.id }}" draggable="{{ 'false' if item.is_locked else 'true' }}">
+     {% if timeline %}
+     <ol class="itinerary-stops day-detail-stops" data-reorder-url="{{ url_for('reorder_itinerary_day', trip_id=trip.id, day_number=day_number) }}" data-day-number="{{ day_number }}" id="day-stop-list">
+      {% set place_number = namespace(value=0) %}
+      {% for event in timeline %}
+      {% if event.kind == 'stay' %}
+      {% set event_draggable = true %}{% include '_itinerary_stay_event.html' %}
+      {% elif event.kind == 'transfer' %}
+      {% set transfer = event.transfer %}{% set event_key = event.key %}{% include '_itinerary_transfer.html' %}
+      {% else %}
+      {% set item = event.item %}
+      {% set place_number.value = place_number.value + 1 %}
+      <li class="itinerary-stop day-detail-stop {{ 'is-locked' if item.is_locked else '' }}" data-event-key="{{ event.key }}" data-place-id="{{ item.id }}" draggable="{{ 'false' if item.is_locked else 'true' }}">
        <span aria-hidden="true" class="drag-handle">
         ⠿
        </span>
        <span class="day-stop-number">
-        {{ loop.index }}
+        {{ place_number.value }}
        </span>
        <span aria-label="{{ '식당' if item.category == 'restaurant' else '관광지' }}" class="place-pin category-pin {{ 'restaurant-pin' if item.category == 'restaurant' else 'attraction-pin' }}" role="img">
         {% if item.category == 'restaurant' %}
@@ -145,6 +153,7 @@
             {{ '{:,.2f}'.format(expense.amount) }} {{ expense.currency }}
            </b>
            <form action="{{ url_for('delete_trip_expense', trip_id=trip.id, expense_id=expense.id) }}" method="post" onsubmit="return confirm('이 지출 기록을 삭제할까요?');">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
             <button aria-label="지출 기록 삭제" class="icon-button" type="submit">
              &times;
             </button>
@@ -158,6 +167,7 @@
            이 장소의 지출 추가
           </summary>
           <form action="{{ url_for('add_trip_expense', trip_id=trip.id) }}" class="place-expense-form" enctype="multipart/form-data" method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
            <input name="place_id" type="hidden" value="{{ item.id }}"/>
            <input name="day_number" type="hidden" value="{{ day_number }}"/>
            <label>
@@ -212,6 +222,7 @@
         </div>
        </div>
        <form action="{{ url_for('toggle_itinerary_place_lock', trip_id=trip.id, place_id=item.id) }}" class="itinerary-row-action" method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
         <input name="return_to_day" type="hidden" value="1"/>
         <button aria-label="{{ item.name }} {{ '고정 해제' if item.is_locked else '순서 고정' }}" class="itinerary-lock-button {{ 'locked' if item.is_locked else '' }}" title="{{ '고정 해제' if item.is_locked else '순서 고정' }}" type="submit">
          <svg aria-hidden="true" viewbox="0 0 24 24">
@@ -221,15 +232,15 @@
         </button>
        </form>
        <form action="{{ url_for('remove_itinerary_place', trip_id=trip.id, place_id=item.id) }}" class="itinerary-row-action" method="post" onsubmit="return confirm('{{ item.name }}을(를) 이 일정에서 제외할까요?');">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
         <input name="return_to_day" type="hidden" value="1"/>
         <button aria-label="{{ item.name }} 일정에서 제거" class="icon-button" title="일정에서 제거" type="submit">
          &times;
         </button>
        </form>
       </li>
-      {% for transfer in item.transfers_after %}{% include '_itinerary_transfer.html' %}{% endfor %}
+      {% endif %}
       {% endfor %}
-      {% for transfer in transfers_after %}{% include '_itinerary_transfer.html' %}{% endfor %}
      </ol>
      {% else %}
      <div class="empty-state compact">
@@ -244,11 +255,6 @@
       </a>
      </div>
      {% endif %}
-     {% if not items and transfers_after %}
-     <ol class="itinerary-stops day-detail-stops">
-      {% for transfer in transfers_after %}{% include '_itinerary_transfer.html' %}{% endfor %}
-     </ol>
-     {% endif %}
     </section>
     <section class="panel itinerary-map-panel day-detail-map-panel">
      <div class="panel-heading">
@@ -261,9 +267,6 @@
      {% if maps_enabled %}
      <div aria-label="{{ day.date }} 방문 장소 지도" class="trip-map" id="trip-map">
      </div>
-     <p class="map-help" data-total="{{ map_total }}" id="map-help">
-      이 날짜에 방문하는 장소만 표시합니다.
-     </p>
      {% else %}
      <div class="map-unavailable">
       여행 지도를 표시하려면 Maps JavaScript API가 허용된 API 키가 필요합니다.

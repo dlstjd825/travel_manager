@@ -40,6 +40,12 @@
   font-weight: 600;
 }
 
+@media (max-width: 640px) {
+  .hero h1 em {
+    display: block;
+  }
+}
+
 .hero h1 em {
   font-style: normal;
   color: #718d7e;

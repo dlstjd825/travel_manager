@@ -45,6 +45,8 @@ def init_db():
             "coordinates_updated_at": "TEXT",
             "check_in_date": "TEXT",
             "check_out_date": "TEXT",
+            "check_in_time": "TEXT NOT NULL DEFAULT '15:00'",
+            "check_out_time": "TEXT NOT NULL DEFAULT '11:00'",
             "region_id": "INTEGER REFERENCES trip_regions(id) ON DELETE SET NULL",
         },
         "places": {
@@ -141,6 +143,27 @@ def init_db():
                 inferred_sources,
             )
     connection.execute("CREATE INDEX IF NOT EXISTS idx_places_region ON places(trip_id, region_id)")
+    connection.execute("INSERT OR IGNORE INTO trip_revisions (trip_id) SELECT id FROM trips")
+    for table in ("trips", "accommodations", "places", "itinerary_days", "itinerary_transfers", "itinerary_event_order", "trip_transport_legs", "trip_expenses", "trip_todos", "trip_regions", "trip_recommendation_settings", "place_journals", "place_photos"):
+        for operation in ("INSERT", "UPDATE", "DELETE"):
+            ref = "NEW" if operation != "DELETE" else "OLD"
+            trip_id_expr = f"{ref}.id" if table == "trips" else f"{ref}.trip_id"
+            trigger_name = f"rev_{table}_{operation.lower()}"
+            connection.execute(f"""CREATE TRIGGER IF NOT EXISTS {trigger_name} AFTER {operation} ON {table}
+                BEGIN
+                  INSERT INTO trip_revisions (trip_id, revision, updated_at)
+                    SELECT {trip_id_expr}, 1, CURRENT_TIMESTAMP WHERE EXISTS (SELECT 1 FROM trips WHERE id = {trip_id_expr})
+                    ON CONFLICT(trip_id) DO UPDATE SET revision = revision + 1, updated_at = CURRENT_TIMESTAMP;
+                END""")
+    for operation in ("INSERT", "UPDATE", "DELETE"):
+        ref = "OLD" if operation == "DELETE" else "NEW"
+        trigger = f"rev_itinerary_items_{operation.lower()}"
+        connection.execute(f"""CREATE TRIGGER IF NOT EXISTS {trigger} AFTER {operation} ON itinerary_items
+            BEGIN
+              INSERT INTO trip_revisions (trip_id, revision, updated_at)
+              SELECT d.trip_id, 1, CURRENT_TIMESTAMP FROM itinerary_days d WHERE d.id = {ref}.day_id
+              ON CONFLICT(trip_id) DO UPDATE SET revision=revision+1, updated_at=CURRENT_TIMESTAMP;
+            END""")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_itinerary_items_region ON itinerary_items(region_id, day_id)")
     accommodation_indexes = connection.execute("PRAGMA index_list(accommodations)").fetchall()
     has_trip_unique = False
@@ -161,6 +184,8 @@ def init_db():
                    address TEXT NOT NULL DEFAULT '',
                    check_in_date TEXT,
                    check_out_date TEXT,
+                   check_in_time TEXT NOT NULL DEFAULT '15:00',
+                   check_out_time TEXT NOT NULL DEFAULT '11:00',
                    latitude REAL,
                    longitude REAL,
                    google_place_id TEXT,
@@ -170,9 +195,9 @@ def init_db():
         )
         connection.execute(
             """INSERT INTO accommodations_multi
-               (id, trip_id, name, address, check_in_date, check_out_date, latitude, longitude,
+               (id, trip_id, name, address, check_in_date, check_out_date, check_in_time, check_out_time, latitude, longitude,
                 google_place_id, coordinates_updated_at, region_id)
-               SELECT id, trip_id, name, address, check_in_date, check_out_date, latitude, longitude,
+               SELECT id, trip_id, name, address, check_in_date, check_out_date, check_in_time, check_out_time, latitude, longitude,
                       google_place_id, coordinates_updated_at, region_id
                FROM accommodations"""
         )

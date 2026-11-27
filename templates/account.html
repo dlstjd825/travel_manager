@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko">
+ <head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1" name="viewport"/>
+  <title>계정 설정 · Trip Manager</title>
+  <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/account.css') }}" rel="stylesheet"/>
+ </head>
+ <body>
+  <main class="shell account-shell">
+   <header class="topbar">
+    <a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">✳</span> Trip <span class="brand-light">Manager</span></a>
+    <a class="back-link" href="{{ url_for('index') }}">내 여행으로</a>
+   </header>
+   <section class="account-heading">
+    <p class="trip-section-kicker">ACCOUNT</p>
+    <h1>계정 설정</h1>
+    <p>{{ session.get('username', '') }} 계정</p>
+   </section>
+   {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}
+   <div class="notices">
+    {% for category, message in messages %}<p class="notice {{ category }}">{{ message }}</p>{% endfor %}
+   </div>
+   {% endif %}{% endwith %}
+   <section class="panel account-danger-panel">
+    <h2>회원 탈퇴</h2>
+    <p>탈퇴하면 계정이 삭제되고 로그인할 수 없게 됩니다.</p>
+    <ul>
+     <li>공동편집자가 없는 소유 여행은 일정·장소·첨부파일과 함께 삭제됩니다. 편집자가 있는 공동 여행은 새 소유자를 선택할 수 있습니다.</li>
+     <li>공동편집 중인 여행 <strong>{{ shared_trip_count }}개</strong>에서는 멤버에서 제외됩니다. 해당 여행은 다른 소유자와 멤버에게 남습니다.</li>
+     <li>공동 여행에 등록된 일정·장소·지출은 여행의 공용 기록으로 남습니다.</li>
+     <li>삭제한 계정은 복구할 수 없습니다.</li>
+    </ul>
+    {% if owned_trips %}
+    <details class="owned-trip-list">
+     <summary>소유 중인 여행과 처리 방법</summary>
+     <ul>{% for trip in owned_trips %}<li>{{ trip.title }}{% if trip.editors %} — 새 소유자
+      <select aria-label="{{ trip.title }} 새 소유자" name="successor_{{ trip.id }}" form="delete-account-form" required>
+       <option value="">편집자 선택</option>{% for editor in trip.editors %}<option value="{{ editor.id }}">{{ editor.username }}</option>{% endfor %}
+      </select>
+     {% else %} — 탈퇴 후 삭제{% endif %}</li>{% endfor %}</ul>
+    </details>
+    {% endif %}
+    <form action="{{ url_for('delete_account') }}" class="delete-account-form" id="delete-account-form" method="post" onsubmit="return confirm('계정 삭제를 진행할까요? 공동 여행은 선택한 편집자에게 소유권을 넘깁니다.');">
+     <input name="csrf_token" type="hidden" value="{{ csrf_token }}"/>
+     <label>현재 비밀번호
+      <input autocomplete="current-password" name="password" required type="password"/>
+     </label>
+     <label>확인하려면 ‘탈퇴’를 입력하세요
+      <input autocomplete="off" name="confirmation" required type="text"/>
+     </label>
+     <button class="delete-account-button" type="submit">계정 영구 삭제</button>
+    </form>
+   </section>
+  </main>
+ </body>
+</html>

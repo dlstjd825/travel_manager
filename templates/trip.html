@@ -36,6 +36,7 @@
         기간 수정
        </summary>
        <form action="{{ url_for('update_trip_dates', trip_id=trip.id) }}" class="date-edit-form" method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
         <label>
          시작일
          <input name="start_date" required="" type="date" value="{{ trip.start_date }}"/>
@@ -62,6 +63,12 @@
    </div>
    {% endif %}{% endwith %}
     {% set active_page = 'overview' %}{% include '_trip_nav.html' %}
+   <div class="markdown-export-actions">
+    <a class="secondary-button markdown-export-link" href="{{ url_for('export_trip_markdown', trip_id=trip.id) }}">
+     <svg aria-hidden="true" viewbox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+     마크다운으로 내보내기
+    </a>
+   </div>
    <section class="overview-stats">
     <a class="panel overview-stat" href="{{ url_for('trip_transport', trip_id=trip.id) }}">
      <span>
@@ -165,6 +172,7 @@
       </div>
      </div>
      <form action="{{ url_for('add_trip_todo', trip_id=trip.id) }}" class="todo-add-form" method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
       <input aria-label="새 할 일" maxlength="180" name="title" placeholder="예: 여권 유효기간 확인" required=""/>
       <button class="primary-button" type="submit">
        추가
@@ -176,12 +184,14 @@
        {% for todo in todos %}
        <li class="{{ 'is-done' if todo.is_done else '' }}">
         <form action="{{ url_for('toggle_trip_todo', trip_id=trip.id, todo_id=todo.id) }}" method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
          <button aria-label="{{ '완료 취소' if todo.is_done else '완료 표시' }}" class="todo-check" type="submit">
           {{ '✓' if todo.is_done else '' }}
          </button>
          <span>{{ todo.title }}</span>
         </form>
         <form action="{{ url_for('delete_trip_todo', trip_id=trip.id, todo_id=todo.id) }}" method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
          <button aria-label="할 일 삭제" class="icon-button" type="submit">&times;</button>
         </form>
        </li>

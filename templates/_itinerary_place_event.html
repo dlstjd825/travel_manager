@@ -1,0 +1,25 @@
+<li class="itinerary-stop {{ 'is-locked' if item.is_locked else '' }}" data-event-key="{{ event_key }}" data-place-id="{{ item.place_id }}" draggable="{{ 'false' if item.is_locked or selected_region else 'true' }}">
+ {% if not selected_region %}<span aria-hidden="true" class="drag-handle">⠿</span>{% endif %}
+ <span aria-label="{{ '식당' if item.category == 'restaurant' else '관광지' }}" class="place-pin category-pin {{ 'restaurant-pin' if item.category == 'restaurant' else 'attraction-pin' }}" role="img">
+  {% if item.category == 'restaurant' %}
+  <svg aria-hidden="true" viewbox="0 0 24 24"><path d="M6 3v7m-3-7v4a3 3 0 0 0 6 0V3M6 10v11m10-18v18m0-18c3 2 4 5 4 8h-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+  {% else %}
+  <svg aria-hidden="true" viewbox="0 0 24 24"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-8h6v8M3 9h18" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+  {% endif %}
+ </span>
+ <div class="stop-details">
+  <h3><a class="place-detail-link" href="{{ url_for('place_detail', trip_id=trip.id, place_id=item.place_id) }}">{{ item.name }}</a></h3>
+  <p>{{ item.address or '주소 미입력' }}</p>
+  {% if item.latitude is none %}<small class="location-warning">좌표 없음 &middot; 장소 등록 화면에서 위치를 선택해 주세요</small>{% endif %}
+ </div>
+ <form action="{{ url_for('toggle_itinerary_place_lock', trip_id=trip.id, place_id=item.place_id) }}" class="itinerary-row-action itinerary-lock-form" method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+  <button aria-label="{{ item.name }} {{ '고정 해제' if item.is_locked else '순서 고정' }}" class="itinerary-lock-button {{ 'locked' if item.is_locked else '' }}" title="{{ '고정 해제' if item.is_locked else '순서 고정' }}" type="submit">
+   <svg aria-hidden="true" viewbox="0 0 24 24"><path d="{% if item.is_locked %}M7 10V7a5 5 0 0 1 10 0v3{% else %}M8 10V7a5 5 0 0 1 9.6-1.5{% endif %}M6 10h12v11H6z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+  </button>
+ </form>
+ <form action="{{ url_for('remove_itinerary_place', trip_id=trip.id, place_id=item.place_id) }}" class="itinerary-row-action itinerary-delete-form" method="post" onsubmit="return confirm('{{ item.name }}을(를) 일정에서 제외할까요?');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+  <button aria-label="{{ item.name }} 일정에서 제거" class="icon-button" title="일정에서 제외" type="submit">&times;</button>
+ </form>
+</li>

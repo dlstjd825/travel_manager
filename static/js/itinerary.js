@@ -78,11 +78,17 @@
         day_number: Number(zone.dataset.dayNumber),
         place_ids: [...zone.querySelectorAll('.itinerary-stop')].map((item) => Number(item.dataset.placeId)),
       }));
+      const timeline = zones.map((zone) => ({
+        day_number: Number(zone.dataset.dayNumber),
+        event_keys: [...zone.querySelector('.itinerary-stops').children]
+          .map((item) => item.dataset.eventKey)
+          .filter(Boolean),
+      }));
       try {
         const response = await fetch(reorderUrl, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({days}),
+          body: JSON.stringify({days, timeline}),
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || '저장하지 못했습니다.');
@@ -165,6 +171,34 @@
     });
 
     document.querySelectorAll('.day-drag-handle').forEach((handle) => {
+      let pointerStart = null;
+      let touchMoved = false;
+      handle.addEventListener('pointerdown', (event) => {
+        if (event.pointerType !== 'touch') return;
+        pointerStart = {x: event.clientX, y: event.clientY};
+        touchMoved = false;
+        draggedDayCard = handle.closest('.day-card');
+        takeSnapshot();
+      });
+      handle.addEventListener('pointermove', (event) => {
+        if (!pointerStart || !draggedDayCard || event.pointerType !== 'touch') return;
+        if (Math.abs(event.clientY - pointerStart.y) < 8) return;
+        touchMoved = true;
+        const target = document.elementFromPoint(event.clientX, event.clientY)?.closest('.day-card');
+        if (target && target !== draggedDayCard) {
+          const box = target.getBoundingClientRect();
+          dayList.insertBefore(draggedDayCard, event.clientY > box.top + box.height / 2 ? target.nextElementSibling : target);
+        }
+      });
+      handle.addEventListener('pointerup', async (event) => {
+        if (!pointerStart || event.pointerType !== 'touch') return;
+        pointerStart = null;
+        if (touchMoved && draggedDayCard) {
+          draggedDayCard = null;
+          reindexDayCards();
+          await saveLayout();
+        } else draggedDayCard = null;
+      });
       handle.addEventListener('dragstart', (event) => {
         event.stopPropagation();
         takeSnapshot();

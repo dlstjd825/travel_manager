@@ -1,0 +1,8 @@
+<li class="itinerary-stay-step" data-event-key="{{ event.key }}" draggable="{{ 'true' if event_draggable else 'false' }}">
+ {% if event_draggable %}<span aria-hidden="true" class="drag-handle timeline-drag-handle" title="드래그해서 방문지 앞이나 뒤로 이동">⠿</span>{% endif %}
+ <article class="day-accommodation-card itinerary-stay-event">
+  <strong><span aria-hidden="true" class="stay-home-icon"><svg viewBox="0 0 24 24"><path d="M3 11 12 4l9 7M5 10v10h14V10M9 20v-6h6v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg></span> {{ event.stay.name }} <span class="stay-event-label">{{ event.stay_event_type }}</span></strong>
+  <p>{{ event.stay.address or '주소 미입력' }}</p>
+  <small>{{ event.stay_event_type }} {{ event.stay_event_time or '시간 미입력' }} · {{ event.stay.check_in_date }} ~ {{ event.stay.check_out_date }}</small>
+ </article>
+</li>

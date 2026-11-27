@@ -32,6 +32,7 @@
     </div>
     <div class="accommodation-editor animated-disclosure{% if editing_accommodation or accommodation_search_results %} is-expanded{% endif %}" id="accommodation-editor" {% if not editing_accommodation and not accommodation_search_results %}hidden{% endif %}>
     <form action="{{ url_for('search_trip_places', trip_id=trip.id) }}" class="search-form" method="post" id="accommodation-search-form">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
      <input name="target" type="hidden" value="accommodation"/>
      <input name="accommodation_id" type="hidden" value="{{ editing_accommodation_id }}"/>
      <label>숙소 검색<input name="query" placeholder="숙소 이름이나 주소" required value="{{ accommodation_search_query }}"/></label>
@@ -50,6 +51,7 @@
     </div>
     {% endif %}
     <form action="{{ url_for('save_accommodation', trip_id=trip.id) }}" class="trip-form accommodation-entry-form" id="accommodation-form" method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
      <input name="accommodation_id" type="hidden" value="{{ editing_accommodation_id }}"/>
      <input name="google_place_id" type="hidden" value="{{ editing_accommodation.google_place_id if editing_accommodation else '' }}"/>
      <input name="latitude" type="hidden" value="{{ editing_accommodation.latitude if editing_accommodation and editing_accommodation.latitude is not none else '' }}"/>
@@ -63,6 +65,10 @@
       <label>체크인<input max="{{ trip.end_date }}" min="{{ trip.start_date }}" name="check_in_date" required type="date" value="{{ editing_accommodation.check_in_date if editing_accommodation and editing_accommodation.check_in_date else '' }}" {% if not editing_accommodation %}disabled{% endif %}/></label>
       <label>체크아웃<input max="{{ trip.end_date }}" min="{{ trip.start_date }}" name="check_out_date" required type="date" value="{{ editing_accommodation.check_out_date if editing_accommodation and editing_accommodation.check_out_date else '' }}" {% if not editing_accommodation %}disabled{% endif %}/></label>
      </div>
+     <div class="accommodation-date-row">
+      <label>체크인 시간<input name="check_in_time" required type="time" value="{{ editing_accommodation.check_in_time if editing_accommodation else '15:00' }}" {% if not editing_accommodation %}disabled{% endif %}/></label>
+      <label>체크아웃 시간<input name="check_out_time" required type="time" value="{{ editing_accommodation.check_out_time if editing_accommodation else '11:00' }}" {% if not editing_accommodation %}disabled{% endif %}/></label>
+     </div>
      <button class="primary-button" type="submit" {% if not editing_accommodation %}disabled{% endif %}>{{ '변경 저장' if editing_accommodation else '숙소 저장' }}</button>
     </form>
     </div>
@@ -73,16 +79,18 @@
      <div>
       <strong>{{ stay.name }}</strong>
       <p>{{ stay.address }}</p>
-      <small>체크인 {{ stay.check_in_date }} · 체크아웃 {{ stay.check_out_date }}{% if stay.region_id %}{% for region in regions %}{% if region.id == stay.region_id %} · {{ region.label }}{% endif %}{% endfor %}{% endif %}</small>
+      <small>체크인 {{ stay.check_in_date }} {{ stay.check_in_time or '15:00' }} · 체크아웃 {{ stay.check_out_date }} {{ stay.check_out_time or '11:00' }}{% if stay.region_id %}{% for region in regions %}{% if region.id == stay.region_id %} · {{ region.label }}{% endif %}{% endfor %}{% endif %}</small>
      </div>
      <div class="accommodation-card-actions">
       <button class="text-button accommodation-edit" type="button"
        data-id="{{ stay.id }}" data-name="{{ stay.name }}" data-address="{{ stay.address }}"
        data-check-in="{{ stay.check_in_date }}" data-check-out="{{ stay.check_out_date }}"
+       data-check-in-time="{{ stay.check_in_time or '15:00' }}" data-check-out-time="{{ stay.check_out_time or '11:00' }}"
        data-lat="{{ stay.latitude if stay.latitude is not none else '' }}"
        data-lng="{{ stay.longitude if stay.longitude is not none else '' }}"
        data-place-id="{{ stay.google_place_id or '' }}" data-region-id="{{ stay.region_id or '' }}">수정</button>
       <form action="{{ url_for('delete_accommodation', trip_id=trip.id, accommodation_id=stay.id) }}" method="post" onsubmit="return confirm('이 숙소를 삭제할까요?');">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
        <button class="text-button" type="submit">삭제</button>
       </form>
      </div>

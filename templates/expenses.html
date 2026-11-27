@@ -56,6 +56,7 @@
       </div>
      </div>
      <form action="{{ url_for('update_trip_budget', trip_id=trip.id) }}" class="expense-form" method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
       <label>
        예산 금액
        <div class="amount-field">
@@ -133,6 +134,7 @@
       </div>
      </div>
      <form action="{{ url_for('add_trip_expense', trip_id=trip.id) }}" class="expense-form" enctype="multipart/form-data" method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
       <label>
        항목 이름
        <input maxlength="180" name="title" placeholder="예: 기차표, 저녁 식사" required=""/>
@@ -237,6 +239,7 @@
         {% endif %}
        </div>
        <form action="{{ url_for('delete_trip_expense', trip_id=trip.id, expense_id=expense.id) }}" method="post" onsubmit="return confirm('이 기록을 삭제할까요?');">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
         <input name="return_to_expenses" type="hidden" value="1"/>
         <button aria-label="기록 삭제" class="icon-button" title="기록 삭제" type="submit">
          &times;

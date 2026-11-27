@@ -24,6 +24,8 @@ Copy-Item .env.example .env
 
 `.env`에 `GOOGLE_MAPS_API_KEY`를 설정한 다음 실행합니다. `GOOGLE_MAPS_BROWSER_API_KEY`는 선택 항목이며, 비워 두면 같은 키로 브라우저 지도를 표시합니다. Maps Demo Key는 Places API (New)와 Maps JavaScript API를 모두 지원하므로 개인 테스트에서는 하나의 키를 쓸 수 있습니다.
 
+여행 개요의 `Markdown으로 내보내기`를 누르면 일정·숙소·교통편을 Markdown 파일로 내려받습니다. 별도 계정이나 API 키가 필요하지 않습니다.
+
 ```powershell
 python app.py
 ```

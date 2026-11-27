@@ -6,6 +6,22 @@
   const itineraryLayout = document.querySelector('.itinerary-layout');
   const scheduleColumn = document.querySelector('.itinerary-schedule-column');
   const mapPanel = document.querySelector('.itinerary-map-panel');
+  const openDaysStorageKey = `trip-manager:itinerary-open:${location.pathname}${location.search}`;
+  let savedOpenDays = null;
+  try {
+    const storedOpenDays = sessionStorage.getItem(openDaysStorageKey);
+    if (storedOpenDays !== null) savedOpenDays = JSON.parse(storedOpenDays);
+    if (!Array.isArray(savedOpenDays)) savedOpenDays = null;
+  } catch (_) {
+    savedOpenDays = null;
+  }
+
+  function saveOpenDayState() {
+    const openDays = dayCards
+      .filter((card) => card.classList.contains('is-open'))
+      .map((card) => card.dataset.dayNumber);
+    try { sessionStorage.setItem(openDaysStorageKey, JSON.stringify(openDays)); } catch (_) { /* Storage can be unavailable in private browsing. */ }
+  }
 
   function alignMapWithFirstDay() {
     const firstDayCard = document.querySelector('.day-card[data-day-number]');
@@ -130,10 +146,12 @@
     const toggle = card.querySelector('.day-card-toggle');
     const content = card.querySelector('.day-dropzone');
     if (!toggle || !content) return;
+    if (savedOpenDays !== null) content.hidden = !savedOpenDays.includes(card.dataset.dayNumber);
     setCardOpen(card, !content.hidden, false);
     toggle.addEventListener('click', () => {
       const isOpen = !card.classList.contains('is-open');
       setCardOpen(card, isOpen);
+      saveOpenDayState();
       const openCards = dayCards.filter((dayCard) => dayCard.classList.contains('is-open'));
       setMapDay(openCards.length === 1 ? openCards[0].dataset.dayNumber : 'all');
       syncExpandAllButton();
@@ -143,6 +161,7 @@
   expandAllButton?.addEventListener('click', () => {
     const allOpen = dayCards.length > 0 && dayCards.every((card) => card.classList.contains('is-open'));
     dayCards.forEach((card) => setCardOpen(card, !allOpen));
+    saveOpenDayState();
     setMapDay('all');
     syncExpandAllButton();
   });
@@ -162,8 +181,16 @@
     });
   });
   window.addEventListener('itinerary-map-place-selected', (event) => {
-    if (event.detail?.placeId) focusPlaceFromMap(event.detail);
+    if (event.detail?.placeId) {
+      focusPlaceFromMap(event.detail);
+      saveOpenDayState();
+    }
   });
+
+  document.addEventListener('submit', (event) => {
+    if (event.target instanceof HTMLFormElement) saveOpenDayState();
+  }, true);
+  window.addEventListener('pagehide', saveOpenDayState);
 
   syncExpandAllButton();
   setMapDay('all');

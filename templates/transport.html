@@ -58,6 +58,7 @@
     </div>
     <div class="transport-editor animated-disclosure" id="transport-editor" hidden>
      <form action="{{ url_for('add_transport_leg', trip_id=trip.id) }}" class="trip-form transport-form" enctype="multipart/form-data" method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
       <div class="transport-form-row transport-mode-row">
        <label>교통수단
         <select name="mode"><option value="flight">항공</option><option value="train">기차</option><option value="bus">버스</option></select>
@@ -106,6 +107,7 @@
       </a>
       {% endif %}
       <form action="{{ url_for('delete_transport_leg', trip_id=trip.id, leg_id=leg.id) }}" method="post" onsubmit="return confirm('이 교통편 정보를 삭제할까요?');">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
        <button aria-label="교통편 삭제" class="icon-button" type="submit">
         &times;
        </button>

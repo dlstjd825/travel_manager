@@ -7,6 +7,12 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS login_attempts (
+    client_key TEXT PRIMARY KEY,
+    attempt_count INTEGER NOT NULL,
+    window_started_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS trips (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -18,6 +24,12 @@ CREATE TABLE IF NOT EXISTS trips (
     budget_currency TEXT NOT NULL DEFAULT 'EUR',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CHECK (end_date >= start_date)
+);
+
+CREATE TABLE IF NOT EXISTS trip_revisions (
+    trip_id INTEGER PRIMARY KEY REFERENCES trips(id) ON DELETE CASCADE,
+    revision INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS trip_members (
@@ -65,6 +77,8 @@ CREATE TABLE IF NOT EXISTS accommodations (
     address TEXT NOT NULL DEFAULT '',
     check_in_date TEXT,
     check_out_date TEXT,
+    check_in_time TEXT NOT NULL DEFAULT '15:00',
+    check_out_time TEXT NOT NULL DEFAULT '11:00',
     latitude REAL,
     longitude REAL,
     google_place_id TEXT,
@@ -129,6 +143,16 @@ CREATE TABLE IF NOT EXISTS itinerary_transfers (
     destination TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS itinerary_event_order (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    day_id INTEGER NOT NULL REFERENCES itinerary_days(id) ON DELETE CASCADE,
+    region_id INTEGER REFERENCES trip_regions(id) ON DELETE CASCADE,
+    event_key TEXT NOT NULL,
+    sequence INTEGER NOT NULL CHECK (sequence > 0)
+);
+CREATE INDEX IF NOT EXISTS idx_itinerary_event_order_day ON itinerary_event_order(day_id, region_id, sequence);
 
 CREATE INDEX IF NOT EXISTS idx_places_trip_id ON places(trip_id);
 CREATE INDEX IF NOT EXISTS idx_itinerary_days_trip_id ON itinerary_days(trip_id);

@@ -18,4 +18,7 @@
   예산&middot;영수증
  </a>
 </nav>
+<div class="trip-live-notice" id="trip-live-notice" role="status" hidden>다른 사용자가 이 여행을 수정했어요. 작성 중인 내용이 있어 자동으로 갱신하지 않았습니다. <button id="trip-live-refresh" type="button">최신 내용 반영</button></div>
+<div id="trip-sync-config" data-revision-url="{{ url_for('trip_revision', trip_id=trip.id) }}" data-trip-id="{{ trip.id }}" hidden></div>
 <script defer src="{{ url_for('static', filename='js/trip-nav.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/trip-sync.js', v='4') }}"></script>

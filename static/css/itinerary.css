@@ -591,6 +591,64 @@
   background: #fffdf4;
 }
 
+.itinerary-stops .itinerary-stay-step {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  padding: 8px 0 !important;
+  border: 0;
+}
+
+.day-detail-stops .itinerary-stay-step {
+  cursor: grab;
+}
+
+.day-detail-stops .itinerary-stay-step:active {
+  cursor: grabbing;
+}
+
+.timeline-drag-handle {
+  flex: none;
+  color: #9aa59d;
+  font-size: 20px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.itinerary-stops .itinerary-stay-event {
+  flex: 1;
+  min-width: 0;
+}
+
+.itinerary-stay-step.timeline-dragging {
+  opacity: .45;
+  background: #f5f8f3;
+}
+
+.itinerary-drag-preview {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  max-width: 280px;
+  overflow: hidden;
+  padding: 10px 14px;
+  border: 1px solid #dce6dd;
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 5px 18px #26352b2b;
+  color: #26352b;
+  font-size: 15px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itinerary-stops .itinerary-stay-event .stay-event-label {
+  color: #987a28;
+  font-size: 12px;
+}
+
 .day-accommodation-card strong {
   display: flex;
   align-items: center;
@@ -603,6 +661,22 @@
 .day-accommodation-card strong span {
   color: #987a28;
   font-size: 11px;
+}
+
+.day-accommodation-card strong .stay-home-icon {
+  display: inline-flex;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #fff1bf;
+}
+
+.stay-home-icon svg {
+  width: 22px;
+  height: 22px;
 }
 
 .day-accommodation-card p {
@@ -765,6 +839,21 @@
 }
 
 @media (max-width:640px) {
+  .day-header {
+    flex-wrap: nowrap !important;
+    display: flex;
+    gap: 5px;
+  }
+
+  .day-heading {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .day-heading time {
+    white-space: nowrap;
+  }
+
   .map-day-filter {
     width: 80px;
     flex: 0 0 80px;
@@ -785,6 +874,21 @@
   .day-drag-handle {
     width: 32px;
     height: 32px;
+  }
+
+  .day-drag-handle {
+    flex: 0 0 32px;
+    touch-action: pan-y;
+  }
+
+  .recommendation-settings-grid,
+  .recommendation-settings-grid label {
+    min-width: 0;
+  }
+
+  .recommendation-settings-grid input {
+    width: 100%;
+    min-width: 0;
   }
 
   .day-accommodations {

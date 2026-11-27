@@ -25,7 +25,7 @@ if (accommodationForm) {
   syncCheckoutDate();
 
   const enableEntryFields = () => {
-    [nameInput, addressInput, checkInInput, checkOutInput].forEach((field) => { field.disabled = false; });
+    [nameInput, addressInput, checkInInput, checkOutInput, accommodationForm.elements.check_in_time, accommodationForm.elements.check_out_time].forEach((field) => { field.disabled = false; });
     accommodationForm.querySelector('button[type="submit"]').disabled = false;
   };
   document.querySelectorAll('.accommodation-edit').forEach((button) => {
@@ -35,6 +35,8 @@ if (accommodationForm) {
       accommodationForm.elements.address.value = button.dataset.address;
       checkInInput.value = button.dataset.checkIn;
       checkOutInput.value = button.dataset.checkOut;
+      accommodationForm.elements.check_in_time.value = button.dataset.checkInTime || '15:00';
+      accommodationForm.elements.check_out_time.value = button.dataset.checkOutTime || '11:00';
       accommodationForm.elements.latitude.value = button.dataset.lat;
       accommodationForm.elements.longitude.value = button.dataset.lng;
       accommodationForm.elements.google_place_id.value = button.dataset.placeId;
@@ -61,7 +63,7 @@ if (accommodationForm) {
     if (accommodationSearchForm) accommodationSearchForm.elements.accommodation_id.value = '';
     accommodationForm.querySelector('button[type="submit"]').textContent = '숙소 저장';
     setAccommodationEditorOpen(true);
-    [nameInput, addressInput, checkInInput, checkOutInput].forEach((field) => { field.disabled = true; });
+    [nameInput, addressInput, checkInInput, checkOutInput, accommodationForm.elements.check_in_time, accommodationForm.elements.check_out_time].forEach((field) => { field.disabled = true; });
     accommodationForm.querySelector('button[type="submit"]').disabled = true;
     accommodationForm.scrollIntoView({behavior: 'smooth', block: 'center'});
   });
@@ -75,7 +77,7 @@ document.querySelectorAll('.select-location').forEach((button) => {
     form.elements.google_place_id.value = button.dataset.placeId;
     form.elements.name.value = button.dataset.name;
     form.elements.address.value = button.dataset.address;
-    [form.elements.name, form.elements.address, form.elements.check_in_date, form.elements.check_out_date]
+    [form.elements.name, form.elements.address, form.elements.check_in_date, form.elements.check_out_date, form.elements.check_in_time, form.elements.check_out_time]
       .forEach((field) => { field.disabled = false; });
     form.querySelector('button[type="submit"]').disabled = false;
     form.querySelector('button[type="submit"]').textContent = form.elements.accommodation_id.value ? '변경 저장' : '숙소 저장';

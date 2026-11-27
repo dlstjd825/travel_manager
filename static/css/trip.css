@@ -584,6 +584,28 @@
   margin-bottom: 18px;
 }
 
+.markdown-export-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 16px 0 22px;
+}
+
+.markdown-export-link {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  border-radius: 8px;
+}
+
+.markdown-export-link svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
 .overview-stat {
   display: flex;
   min-height: 100px;

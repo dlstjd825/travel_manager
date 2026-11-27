@@ -7,7 +7,11 @@ import math
 import re
 import hmac
 import secrets
+import time
 from pathlib import Path
+
+_login_window_seconds = 600
+_login_max_attempts = 8
 
 from dotenv import load_dotenv
 from flask import Flask, abort, flash, g, redirect, render_template, request, send_from_directory, session, url_for
@@ -62,21 +66,23 @@ def create_app(test_config=None):
     os.makedirs(app.config["TRANSPORT_UPLOAD_FOLDER"], exist_ok=True)
     os.makedirs(app.config["PLACE_PHOTO_UPLOAD_FOLDER"], exist_ok=True)
 
+
     @app.before_request
     def require_authenticated_user():
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            submitted_token = request.form.get("csrf_token") or request.headers.get("X-CSRFToken", "")
+            session_token = session.get("csrf_token", "")
+            if not session_token or not hmac.compare_digest(submitted_token, session_token):
+                abort(400, description="요청 보안 토큰이 없거나 만료되었습니다. 페이지를 새로고침해 주세요.")
         if request.endpoint in {"login", "register", "static"}:
             return None
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.headers.get("Origin"):
+            from urllib.parse import urlsplit
+            if urlsplit(request.headers["Origin"]).netloc != request.host:
+                abort(403)
         user_id = session.get("user_id")
         if not user_id:
             return redirect(url_for("login"))
-        csrf_protected_endpoints = {
-            "invite_trip_member", "accept_trip_invitation", "decline_trip_invitation", "remove_trip_member",
-        }
-        if request.method == "POST" and request.endpoint in csrf_protected_endpoints:
-            submitted_token = request.form.get("csrf_token", "")
-            session_token = session.get("csrf_token", "")
-            if not session_token or not hmac.compare_digest(submitted_token, session_token):
-                abort(400)
         trip_id = (request.view_args or {}).get("trip_id")
         if trip_id is not None:
             membership = query_db(
@@ -86,7 +92,39 @@ def create_app(test_config=None):
             if membership is None:
                 abort(404)
             g.trip_role = membership["role"]
+            if request.method == "POST":
+                submitted_revision = request.form.get("expected_revision")
+                if not submitted_revision and request.is_json:
+                    submitted_revision = (request.get_json(silent=True) or {}).get("expected_revision")
+                if submitted_revision:
+                    db = get_db()
+                    # Hold a SQLite write lock from revision comparison through the route's commit.
+                    # A concurrent writer then checks the revision only after this request commits.
+                    db.execute("BEGIN IMMEDIATE")
+                    current = query_db("SELECT revision FROM trip_revisions WHERE trip_id = ?", (trip_id,), one=True)
+                    if current and str(current["revision"]) != str(submitted_revision):
+                        db.rollback()
+                        if request.is_json:
+                            return {"error": "다른 사용자가 먼저 수정했습니다. 새로고침 후 변경 내용을 확인해 주세요."}, 409
+                        abort(409, description="다른 사용자가 먼저 수정했습니다. 새로고침 후 다시 시도해 주세요.")
         return None
+
+    @app.after_request
+    def add_security_headers(response):
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)")
+        trip_id = (request.view_args or {}).get("trip_id")
+        if trip_id is not None:
+            revision = query_db(
+                "SELECT revision FROM trip_revisions WHERE trip_id = ?", (trip_id,), one=True
+            )
+            if revision:
+                response.headers["X-Trip-Revision"] = str(revision["revision"])
+        if app_environment == "production":
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        return response
 
     @app.context_processor
     def inject_csrf_token():
@@ -148,18 +186,218 @@ def create_app(test_config=None):
         if request.method == "POST":
             username = request.form.get("username", "").strip()
             password = request.form.get("password", "")
+            raw_client_key = request.remote_addr or "unknown"
+            client_key = hmac.new(app.config["SECRET_KEY"].encode() if isinstance(app.config["SECRET_KEY"], str) else app.config["SECRET_KEY"], raw_client_key.encode(), "sha256").hexdigest()
+            now = int(time.time())
+            attempt = query_db("SELECT attempt_count,window_started_at FROM login_attempts WHERE client_key=?", (client_key,), one=True)
+            count = attempt["attempt_count"] if attempt and now - attempt["window_started_at"] < _login_window_seconds else 0
+            if count >= _login_max_attempts:
+                flash("로그인 시도가 너무 많습니다. 10분 후 다시 시도해 주세요.", "error")
+                return render_template("auth.html", mode="login"), 429
             user = query_db("SELECT * FROM users WHERE username = ? COLLATE NOCASE", (username,), one=True)
             if user and check_password_hash(user["password_hash"], password):
+                get_db().execute("DELETE FROM login_attempts WHERE client_key=?", (client_key,)); get_db().commit()
                 session.clear()
                 session["user_id"] = user["id"]
                 session["username"] = user["username"]
                 return redirect(url_for("index"))
+            if not attempt or now - attempt["window_started_at"] >= _login_window_seconds:
+                get_db().execute("INSERT INTO login_attempts(client_key,attempt_count,window_started_at) VALUES(?,1,?) ON CONFLICT(client_key) DO UPDATE SET attempt_count=1,window_started_at=excluded.window_started_at", (client_key,now))
+            else:
+                get_db().execute("UPDATE login_attempts SET attempt_count=attempt_count+1 WHERE client_key=?", (client_key,))
+            get_db().commit()
             flash("아이디 또는 비밀번호를 확인해 주세요.", "error")
         return render_template("auth.html", mode="login")
 
     @app.post("/logout")
     def logout():
         session.clear()
+        return redirect(url_for("login"))
+
+    @app.get("/account")
+    def account_settings():
+        user_id = session["user_id"]
+        owned_trips = query_db(
+            """SELECT DISTINCT t.id, t.title, t.start_date, t.end_date FROM trips t
+               LEFT JOIN trip_members tm ON tm.trip_id = t.id AND tm.user_id = ?
+               WHERE t.user_id = ? OR tm.role = 'owner'
+               ORDER BY t.start_date, t.id""",
+            (user_id, user_id),
+        )
+        owned_trips = [
+            {
+                **dict(trip),
+                "editors": query_db(
+                    """SELECT u.id, u.username FROM trip_members tm
+                       JOIN users u ON u.id = tm.user_id
+                       WHERE tm.trip_id = ? AND tm.role = 'editor'
+                       ORDER BY u.username COLLATE NOCASE""",
+                    (trip["id"],),
+                ),
+            }
+            for trip in owned_trips
+        ]
+        shared_trip_count = query_db(
+            "SELECT COUNT(*) AS count FROM trip_members WHERE user_id = ? AND role = 'editor'",
+            (user_id,), one=True,
+        )["count"]
+        return render_template("account.html", owned_trips=owned_trips, shared_trip_count=shared_trip_count)
+
+    @app.get("/trips/<int:trip_id>/revision")
+    def trip_revision(trip_id):
+        row = query_db("SELECT revision, updated_at FROM trip_revisions WHERE trip_id = ?", (trip_id,), one=True)
+        if row is None:
+            abort(404)
+        response = app.make_response({"revision": row["revision"], "updated_at": row["updated_at"]})
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        return response
+
+    @app.get("/trips/<int:trip_id>/export/markdown")
+    def export_trip_markdown(trip_id):
+        trip = query_db("SELECT * FROM trips WHERE id = ?", (trip_id,), one=True)
+        if trip is None:
+            abort(404)
+        lines = [
+            f"# {trip['title']}", "",
+            f"- 여행지: {trip['city']}",
+            f"- 기간: {trip['start_date']} — {trip['end_date']}",
+            f"- 일정: {(date.fromisoformat(trip['end_date']) - date.fromisoformat(trip['start_date'])).days}박 {(date.fromisoformat(trip['end_date']) - date.fromisoformat(trip['start_date'])).days + 1}일",
+        ]
+        regions = query_db("SELECT label,start_date,end_date FROM trip_regions WHERE trip_id=? ORDER BY sort_order", (trip_id,))
+        if regions:
+            lines.extend(["", "## 국가별 기간", ""])
+            lines.extend([f"- **{region['label']}**: {region['start_date']} — {region['end_date']}" for region in regions])
+        lines.extend(["", "## 일정", ""])
+        days = query_db("SELECT id,day_number,date FROM itinerary_days WHERE trip_id=? ORDER BY day_number", (trip_id,))
+        for day in days:
+            lines.extend([f"### Day {day['day_number']} · {day['date']}", ""])
+            stays = query_db("SELECT name,address,check_in_date,check_out_date,check_in_time,check_out_time FROM accommodations WHERE trip_id=? AND (check_in_date=? OR check_out_date=?) ORDER BY check_in_date", (trip_id, day['date'], day['date']))
+            checkout_stays = [stay for stay in stays if stay['check_out_date'] == day['date']]
+            checkin_stays = [stay for stay in stays if stay['check_in_date'] == day['date']]
+            for stay in checkout_stays:
+                lines.append(f"- 🏨 **체크아웃 {stay['name']}** · {stay['check_out_time'] or '시간 미입력'} — {stay['address']}")
+            transfers = query_db("SELECT origin,destination FROM itinerary_transfers WHERE day_id=? ORDER BY created_at", (day['id'],))
+            for transfer in transfers:
+                lines.append(f"- 🚆 국가 간 이동: {transfer['origin']} → {transfer['destination']}")
+            for stay in checkin_stays:
+                lines.append(f"- 🏨 **체크인 {stay['name']}** · {stay['check_in_time'] or '시간 미입력'} — {stay['address']}")
+            places = query_db("SELECT p.name,p.address,i.sequence,i.start_time FROM itinerary_items i JOIN places p ON p.id=i.place_id WHERE i.day_id=? ORDER BY i.sequence", (day['id'],))
+            for place in places:
+                when = f"{place['start_time']} · " if place['start_time'] else ""
+                lines.append(f"{place['sequence']}. {when}**{place['name']}** — {place['address']}")
+            if not stays and not transfers and not places:
+                lines.append("- 일정 없음")
+            lines.append("")
+        lines.extend(["## 숙소", ""])
+        accommodations = query_db("SELECT name,address,check_in_date,check_out_date,check_in_time,check_out_time FROM accommodations WHERE trip_id=? ORDER BY check_in_date,id", (trip_id,))
+        if accommodations:
+            lines.extend([f"- **{item['name']}** — {item['address']} (체크인 {item['check_in_date'] or ''} {item['check_in_time'] or ''} · 체크아웃 {item['check_out_date'] or ''} {item['check_out_time'] or ''})" for item in accommodations])
+        else:
+            lines.append("- 등록된 숙소 없음")
+        lines.extend(["", "## 교통편", ""])
+        legs = query_db("SELECT mode,carrier,transport_number,origin,destination,departure_at,arrival_at FROM trip_transport_legs WHERE trip_id=? ORDER BY departure_at", (trip_id,))
+        if legs:
+            for leg in legs:
+                label = {"flight":"항공","train":"기차","bus":"버스"}.get(leg['mode'], leg['mode'])
+                transport_name = f"{label} {leg['transport_number']}" if leg['transport_number'] else label
+                carrier = f" {leg['carrier']}" if leg['carrier'] else ""
+                lines.append(f"- **{transport_name}**{carrier}: {leg['origin']} → {leg['destination']} · {leg['departure_at']} ~ {leg['arrival_at']}")
+        else:
+            lines.append("- 등록된 교통편 없음")
+        content = "\n".join(lines).rstrip() + "\n"
+        filename = secure_filename(trip['title']) or f"trip-{trip_id}"
+        return app.response_class(content, mimetype="text/markdown; charset=utf-8", headers={"Content-Disposition": f"attachment; filename={filename}.md"})
+
+    @app.post("/account/delete")
+    def delete_account():
+        user_id = session["user_id"]
+        password = request.form.get("password", "")
+        confirmation = request.form.get("confirmation", "").strip()
+        user = query_db("SELECT password_hash FROM users WHERE id = ?", (user_id,), one=True)
+        if user is None:
+            session.clear()
+            return redirect(url_for("login"))
+        if not check_password_hash(user["password_hash"], password):
+            flash("비밀번호가 일치하지 않습니다.", "error")
+            return redirect(url_for("account_settings"))
+        if confirmation != "탈퇴":
+            flash("확인란에 ‘탈퇴’를 입력해 주세요.", "error")
+            return redirect(url_for("account_settings"))
+
+        db = get_db()
+        owned_trip_ids = [
+            row["id"] for row in query_db(
+                """SELECT DISTINCT t.id FROM trips t
+                   LEFT JOIN trip_members tm ON tm.trip_id = t.id AND tm.user_id = ?
+                   WHERE t.user_id = ? OR tm.role = 'owner'""",
+                (user_id, user_id),
+            )
+        ]
+        successor_by_trip = {}
+        for trip_id in owned_trip_ids:
+            candidates = query_db(
+                "SELECT user_id FROM trip_members WHERE trip_id = ? AND role = 'editor'",
+                (trip_id,),
+            )
+            if not candidates:
+                continue
+            try:
+                successor_id = int(request.form.get(f"successor_{trip_id}", ""))
+            except ValueError:
+                flash("공동 여행의 새 소유자를 각각 선택해 주세요.", "error")
+                return redirect(url_for("account_settings"))
+            if successor_id not in {candidate["user_id"] for candidate in candidates}:
+                flash("선택한 사용자는 해당 여행의 편집자가 아닙니다.", "error")
+                return redirect(url_for("account_settings"))
+            successor_by_trip[trip_id] = successor_id
+        delete_trip_ids = [trip_id for trip_id in owned_trip_ids if trip_id not in successor_by_trip]
+        uploaded_files = []
+        if delete_trip_ids:
+            marks = ",".join("?" for _ in delete_trip_ids)
+            file_tables = (
+                ("place_photos", "stored_file_name", app.config["PLACE_PHOTO_UPLOAD_FOLDER"]),
+                ("trip_expenses", "stored_file_name", app.config["EXPENSE_UPLOAD_FOLDER"]),
+                ("trip_transport_legs", "stored_file_name", app.config["TRANSPORT_UPLOAD_FOLDER"]),
+            )
+            for table, column, folder in file_tables:
+                uploaded_files.extend(
+                    (folder, row[column])
+                    for row in query_db(
+                        f"SELECT {column} FROM {table} WHERE trip_id IN ({marks}) AND {column} IS NOT NULL",
+                        delete_trip_ids,
+                    )
+                )
+
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            for trip_id, successor_id in successor_by_trip.items():
+                db.execute(
+                    "UPDATE trip_members SET role = 'owner' WHERE trip_id = ? AND user_id = ?",
+                    (trip_id, successor_id),
+                )
+                db.execute("UPDATE trips SET user_id = ? WHERE id = ?", (successor_id, trip_id))
+            if owned_trip_ids:
+                if delete_trip_ids:
+                    marks = ",".join("?" for _ in delete_trip_ids)
+                    db.execute(f"DELETE FROM trips WHERE id IN ({marks})", delete_trip_ids)
+            # Cascades remove this user's memberships, invitations, and notifications.
+            db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            db.commit()
+        except sqlite3.Error:
+            db.rollback()
+            flash("계정을 삭제하지 못했습니다. 잠시 후 다시 시도해 주세요.", "error")
+            return redirect(url_for("account_settings"))
+
+        for folder, stored_name in uploaded_files:
+            file_path = os.path.join(folder, os.path.basename(stored_name))
+            try:
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+            except OSError:
+                app.logger.warning("Could not remove account data file: %s", file_path)
+
+        session.clear()
+        flash("계정과 소유한 여행을 삭제했습니다.", "success")
         return redirect(url_for("login"))
 
     @app.get("/")
@@ -388,11 +626,11 @@ def create_app(test_config=None):
                 for stay in stays:
                     db.execute(
                         """INSERT INTO accommodations
-                           (trip_id, name, address, check_in_date, check_out_date, latitude, longitude,
+                           (trip_id, name, address, check_in_date, check_out_date, check_in_time, check_out_time, latitude, longitude,
                             google_place_id, coordinates_updated_at, region_id)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (merged_trip_id, stay["name"], stay["address"], stay["check_in_date"],
-                         stay["check_out_date"], stay["latitude"], stay["longitude"],
+                         stay["check_out_date"], stay["check_in_time"], stay["check_out_time"], stay["latitude"], stay["longitude"],
                          stay["google_place_id"], stay["coordinates_updated_at"], source_region_id),
                     )
                 transport_legs = query_db(
@@ -1168,10 +1406,35 @@ def create_app(test_config=None):
                 (day["id"],),
             )
             items_by_id = {item["itinerary_item_id"]: item for item in items}
+            checkout_stays = [stay for stay in accommodations if stay["check_out_date"] == day["date"]]
+            checkin_stays = [stay for stay in accommodations if stay["check_in_date"] == day["date"]]
+            attached_checkout_ids = set()
+            attached_checkin_ids = set()
             day_transfers_after = []
             for transfer in transfers:
                 if selected_region and selected_region["id"] not in (transfer["from_region_id"], transfer["to_region_id"]):
                     continue
+                transfer = {**dict(transfer), "checkout_stays": [], "checkin_stays": []}
+                for stay in checkout_stays:
+                    matches_origin = (
+                        transfer["from_region_id"] is not None
+                        and stay["region_id"] == transfer["from_region_id"]
+                    ) or (
+                        transfer["from_region_id"] is None and len(transfers) == 1
+                    )
+                    if matches_origin and stay["id"] not in attached_checkout_ids:
+                        transfer["checkout_stays"].append(stay)
+                        attached_checkout_ids.add(stay["id"])
+                for stay in checkin_stays:
+                    matches_destination = (
+                        transfer["to_region_id"] is not None
+                        and stay["region_id"] == transfer["to_region_id"]
+                    ) or (
+                        transfer["to_region_id"] is None and len(transfers) == 1
+                    )
+                    if matches_destination and stay["id"] not in attached_checkin_ids:
+                        transfer["checkin_stays"].append(stay)
+                        attached_checkin_ids.add(stay["id"])
                 if transfer["before_item_id"] in items_by_id:
                     items_by_id[transfer["before_item_id"]]["transfers_before"].append(transfer)
                 elif items and selected_region and transfer["from_region_id"] == selected_region["id"]:
@@ -1180,13 +1443,73 @@ def create_app(test_config=None):
                     items[0]["transfers_before"].append(transfer)
                 else:
                     day_transfers_after.append(transfer)
+            unmatched_checkout_stays = [stay for stay in checkout_stays if stay["id"] not in attached_checkout_ids]
+            unmatched_checkin_stays = [stay for stay in checkin_stays if stay["id"] not in attached_checkin_ids]
+            timeline = []
+            for stay in unmatched_checkout_stays:
+                timeline.append({
+                    "kind": "stay", "key": f"stay-checkout:{stay['id']}", "stay": stay,
+                    "stay_event_type": "체크아웃", "stay_event_time": stay["check_out_time"],
+                })
+            for item in items:
+                for transfer in item["transfers_before"]:
+                    for stay in transfer["checkout_stays"]:
+                        timeline.append({
+                            "kind": "stay", "key": f"stay-checkout:{stay['id']}", "stay": stay,
+                            "stay_event_type": "체크아웃", "stay_event_time": stay["check_out_time"],
+                        })
+                    timeline.append({
+                        "kind": "transfer", "key": f"transfer:{transfer['id']}", "transfer": transfer,
+                    })
+                    for stay in transfer["checkin_stays"]:
+                        timeline.append({
+                            "kind": "stay", "key": f"stay-checkin:{stay['id']}", "stay": stay,
+                            "stay_event_type": "체크인", "stay_event_time": stay["check_in_time"],
+                        })
+                timeline.append({"kind": "place", "key": f"place:{item['place_id']}", "item": item})
+                for transfer in item["transfers_after"]:
+                    for stay in transfer["checkout_stays"]:
+                        timeline.append({
+                            "kind": "stay", "key": f"stay-checkout:{stay['id']}", "stay": stay,
+                            "stay_event_type": "체크아웃", "stay_event_time": stay["check_out_time"],
+                        })
+                    timeline.append({
+                        "kind": "transfer", "key": f"transfer:{transfer['id']}", "transfer": transfer,
+                    })
+                    for stay in transfer["checkin_stays"]:
+                        timeline.append({
+                            "kind": "stay", "key": f"stay-checkin:{stay['id']}", "stay": stay,
+                            "stay_event_type": "체크인", "stay_event_time": stay["check_in_time"],
+                        })
+            for transfer in day_transfers_after:
+                for stay in transfer["checkout_stays"]:
+                    timeline.append({
+                        "kind": "stay", "key": f"stay-checkout:{stay['id']}", "stay": stay,
+                        "stay_event_type": "체크아웃", "stay_event_time": stay["check_out_time"],
+                    })
+                timeline.append({
+                    "kind": "transfer", "key": f"transfer:{transfer['id']}", "transfer": transfer,
+                })
+                for stay in transfer["checkin_stays"]:
+                    timeline.append({
+                        "kind": "stay", "key": f"stay-checkin:{stay['id']}", "stay": stay,
+                        "stay_event_type": "체크인", "stay_event_time": stay["check_in_time"],
+                    })
+            for stay in unmatched_checkin_stays:
+                timeline.append({
+                    "kind": "stay", "key": f"stay-checkin:{stay['id']}", "stay": stay,
+                    "stay_event_type": "체크인", "stay_event_time": stay["check_in_time"],
+                })
+            timeline = _order_itinerary_events(
+                get_db(), trip_id, day["id"], selected_region["id"] if selected_region else None, timeline
+            )
             place_days.update({item["place_id"]: day["day_number"] for item in items})
             place_sequences.update({item["place_id"]: item["sequence"] for item in items})
             days.append({
                 "day_number": day["day_number"],
                 "date": day["date"],
                 "items": items,
-                "accommodations_for_date": _accommodations_for_date(accommodations, day["date"]),
+                "timeline": timeline,
                 "accommodation_status": _accommodation_status(accommodations, day["date"]),
                 "transfers_after": day_transfers_after,
             })
@@ -1280,6 +1603,148 @@ def create_app(test_config=None):
             flash("여행 일정을 날짜별로 추천하고 저장했습니다.", "success")
         return redirect(url_for("trip_itinerary", trip_id=trip_id))
 
+    @app.post("/trips/<int:trip_id>/regions/<int:region_id>/recommend-itinerary")
+    def recommend_region_itinerary(trip_id, region_id):
+        trip = query_db("SELECT * FROM trips WHERE id = ?", (trip_id,), one=True)
+        region = query_db(
+            "SELECT * FROM trip_regions WHERE id = ? AND trip_id = ?",
+            (region_id, trip_id), one=True,
+        )
+        if trip is None or region is None:
+            abort(404)
+        return_to_region = redirect(url_for("trip_itinerary", trip_id=trip_id, region_id=region_id))
+        places = query_db(
+            "SELECT * FROM places WHERE trip_id = ? AND region_id = ? ORDER BY id",
+            (trip_id, region_id),
+        )
+        if not places:
+            flash(f"{region['label']}에 등록된 장소가 없습니다.", "error")
+            return return_to_region
+
+        trip_start = date.fromisoformat(trip["start_date"])
+        trip_end = date.fromisoformat(trip["end_date"])
+        region_start = max(date.fromisoformat(region["start_date"]), trip_start)
+        region_end = min(date.fromisoformat(region["end_date"]), trip_end)
+        if region_end < region_start:
+            flash(f"{region['label']}의 여행 날짜를 확인해 주세요.", "error")
+            return return_to_region
+
+        trip_days = query_db(
+            "SELECT id, day_number, date FROM itinerary_days WHERE trip_id = ? ORDER BY day_number",
+            (trip_id,),
+        )
+        day_by_date = {day["date"]: day for day in trip_days}
+        region_day_count = (region_end - region_start).days + 1
+        if any((region_start + timedelta(days=offset)).isoformat() not in day_by_date for offset in range(region_day_count)):
+            flash("여행 날짜별 일정표가 없어 국가 일정을 다시 추천하지 못했습니다.", "error")
+            return return_to_region
+
+        transfer_rows = query_db(
+            """SELECT DISTINCT d.date FROM itinerary_transfers t
+               JOIN itinerary_days d ON d.id = t.day_id
+               WHERE t.trip_id = ?""",
+            (trip_id,),
+        )
+        transfer_dates = {row["date"] for row in transfer_rows}
+        existing_region_items = query_db(
+            """SELECT ii.place_id, d.date FROM itinerary_items ii
+               JOIN places p ON p.id = ii.place_id
+               JOIN itinerary_days d ON d.id = ii.day_id
+               WHERE d.trip_id = ? AND p.region_id = ?""",
+            (trip_id, region_id),
+        )
+        fixed_place_ids = {
+            row["place_id"] for row in existing_region_items
+            if row["date"] in transfer_dates
+            or row["date"] < region_start.isoformat()
+            or row["date"] > region_end.isoformat()
+        }
+        movable_places = [place for place in places if place["id"] not in fixed_place_ids]
+        if not movable_places:
+            flash(f"{region['label']}의 장소는 모두 국가 간 이동일에 있어 기존 일정을 유지했습니다.", "success")
+            return return_to_region
+
+        transport_legs = query_db(
+            "SELECT * FROM trip_transport_legs WHERE trip_id = ? ORDER BY departure_at, id",
+            (trip_id,),
+        )
+        daily_availability = _build_day_availability(
+            trip, transport_legs, _get_recommendation_settings(trip_id)
+        )
+        availability = {}
+        for offset in range(region_day_count):
+            current_date = (region_start + timedelta(days=offset)).isoformat()
+            local_day_number = offset + 1
+            global_day_number = day_by_date[current_date]["day_number"]
+            if current_date in transfer_dates:
+                availability[local_day_number] = {
+                    "is_available": False,
+                    "blocked_reason": "국가 간 이동이 있는 날은 기존 일정을 유지합니다.",
+                    "available_hours": 0,
+                }
+            else:
+                availability[local_day_number] = daily_availability.get(global_day_number, {})
+        if not any(day.get("is_available", True) for day in availability.values()):
+            flash("이동일과 교통편 시간을 제외하면 추천할 수 있는 날이 없어 기존 일정을 유지했습니다.", "error")
+            return return_to_region
+
+        region_stays = query_db(
+            "SELECT * FROM accommodations WHERE trip_id = ? AND region_id = ? ORDER BY check_in_date, id",
+            (trip_id, region_id),
+        )
+        midpoint = region_start + timedelta(days=(region_end - region_start).days // 2)
+        active_stay = next((
+            stay for stay in region_stays
+            if stay["check_in_date"] and stay["check_out_date"]
+            and stay["check_in_date"] <= midpoint.isoformat() < stay["check_out_date"]
+            and stay["latitude"] is not None and stay["longitude"] is not None
+        ), None)
+        recommendation = recommend_itinerary(
+            movable_places, active_stay, region_start.isoformat(), region_day_count, availability
+        )
+
+        replace_day_ids = [
+            day_by_date[(region_start + timedelta(days=offset)).isoformat()]["id"]
+            for offset in range(region_day_count)
+            if (region_start + timedelta(days=offset)).isoformat() not in transfer_dates
+        ]
+        movable_place_ids = [place["id"] for place in movable_places]
+        db = get_db()
+        try:
+            if replace_day_ids and movable_place_ids:
+                day_placeholders = ",".join("?" for _ in replace_day_ids)
+                place_placeholders = ",".join("?" for _ in movable_place_ids)
+                db.execute(
+                    f"DELETE FROM itinerary_items WHERE day_id IN ({day_placeholders}) AND place_id IN ({place_placeholders})",
+                    (*replace_day_ids, *movable_place_ids),
+                )
+            if replace_day_ids:
+                placeholders = ",".join("?" for _ in replace_day_ids)
+                db.execute(
+                    f"DELETE FROM itinerary_event_order WHERE trip_id = ? AND day_id IN ({placeholders})",
+                    (trip_id, *replace_day_ids),
+                )
+            for day in recommendation:
+                day_row = day_by_date[day["date"]]
+                next_sequence = db.execute(
+                    "SELECT COALESCE(MAX(sequence), 0) + 1 FROM itinerary_items WHERE day_id = ?",
+                    (day_row["id"],),
+                ).fetchone()[0]
+                for sequence, place in enumerate(day["places"], 1):
+                    db.execute(
+                        """INSERT INTO itinerary_items (day_id, place_id, sequence, start_time, region_id)
+                           VALUES (?, ?, ?, NULL, ?)""",
+                        (day_row["id"], place["id"], next_sequence + sequence - 1, region_id),
+                    )
+            db.commit()
+        except sqlite3.Error:
+            db.rollback()
+            flash(f"{region['label']} 일정을 다시 추천하지 못했습니다. 기존 일정은 유지됩니다.", "error")
+            return return_to_region
+
+        flash(f"{region['label']} 일정만 다시 추천했습니다. 다른 국가와 국가 간 이동일은 유지했습니다.", "success")
+        return return_to_region
+
     @app.post("/trips/<int:trip_id>/recommendation-settings")
     def save_recommendation_settings(trip_id):
         if query_db("SELECT id FROM trips WHERE id = ?", (trip_id,), one=True) is None:
@@ -1338,6 +1803,13 @@ def create_app(test_config=None):
             (day["id"],),
         )
         items = [{**dict(item), "transfers_before": [], "transfers_after": []} for item in items]
+        accommodations = query_db(
+            "SELECT * FROM accommodations WHERE trip_id = ? ORDER BY check_in_date, id", (trip_id,)
+        )
+        checkout_stays = [stay for stay in accommodations if stay["check_out_date"] == day["date"]]
+        checkin_stays = [stay for stay in accommodations if stay["check_in_date"] == day["date"]]
+        attached_checkout_ids = set()
+        attached_checkin_ids = set()
         transfers = query_db(
             """SELECT it.*, fr.label AS from_label, tr.label AS to_label
                FROM itinerary_transfers it
@@ -1349,10 +1821,63 @@ def create_app(test_config=None):
         items_by_id = {item["itinerary_item_id"]: item for item in items}
         transfers_after = []
         for transfer in transfers:
+            transfer = {**dict(transfer), "checkout_stays": [], "checkin_stays": []}
+            for stay in checkout_stays:
+                matches_origin = (
+                    transfer["from_region_id"] is not None
+                    and stay["region_id"] == transfer["from_region_id"]
+                ) or (transfer["from_region_id"] is None and len(transfers) == 1)
+                if matches_origin and stay["id"] not in attached_checkout_ids:
+                    transfer["checkout_stays"].append(stay)
+                    attached_checkout_ids.add(stay["id"])
+            for stay in checkin_stays:
+                matches_destination = (
+                    transfer["to_region_id"] is not None
+                    and stay["region_id"] == transfer["to_region_id"]
+                ) or (transfer["to_region_id"] is None and len(transfers) == 1)
+                if matches_destination and stay["id"] not in attached_checkin_ids:
+                    transfer["checkin_stays"].append(stay)
+                    attached_checkin_ids.add(stay["id"])
             if transfer["before_item_id"] in items_by_id:
                 items_by_id[transfer["before_item_id"]]["transfers_before"].append(transfer)
             else:
                 transfers_after.append(transfer)
+        timeline = []
+        unmatched_checkout_stays = [stay for stay in checkout_stays if stay["id"] not in attached_checkout_ids]
+        unmatched_checkin_stays = [stay for stay in checkin_stays if stay["id"] not in attached_checkin_ids]
+        for stay in unmatched_checkout_stays:
+            timeline.append({
+                "kind": "stay", "key": f"stay-checkout:{stay['id']}", "stay": stay,
+                "stay_event_type": "체크아웃", "stay_event_time": stay["check_out_time"],
+            })
+
+        def add_transfer_events(transfer):
+            for stay in transfer["checkout_stays"]:
+                timeline.append({
+                    "kind": "stay", "key": f"stay-checkout:{stay['id']}", "stay": stay,
+                    "stay_event_type": "체크아웃", "stay_event_time": stay["check_out_time"],
+                })
+            timeline.append({"kind": "transfer", "key": f"transfer:{transfer['id']}", "transfer": transfer})
+            for stay in transfer["checkin_stays"]:
+                timeline.append({
+                    "kind": "stay", "key": f"stay-checkin:{stay['id']}", "stay": stay,
+                    "stay_event_type": "체크인", "stay_event_time": stay["check_in_time"],
+                })
+
+        for item in items:
+            for transfer in item["transfers_before"]:
+                add_transfer_events(transfer)
+            timeline.append({"kind": "place", "key": f"place:{item['id']}", "item": item})
+            for transfer in item["transfers_after"]:
+                add_transfer_events(transfer)
+        for transfer in transfers_after:
+            add_transfer_events(transfer)
+        for stay in unmatched_checkin_stays:
+            timeline.append({
+                "kind": "stay", "key": f"stay-checkin:{stay['id']}", "stay": stay,
+                "stay_event_type": "체크인", "stay_event_time": stay["check_in_time"],
+            })
+        timeline = _order_itinerary_events(get_db(), trip_id, day["id"], None, timeline)
         place_expenses = query_db(
             """SELECT e.* FROM trip_expenses e
                JOIN itinerary_items ii ON ii.place_id = e.place_id
@@ -1363,9 +1888,6 @@ def create_app(test_config=None):
         expenses_by_place = {}
         for expense in place_expenses:
             expenses_by_place.setdefault(expense["place_id"], []).append(expense)
-        accommodations = query_db(
-            "SELECT * FROM accommodations WHERE trip_id = ? ORDER BY check_in_date, id", (trip_id,)
-        )
         has_regions = query_db(
             "SELECT 1 FROM trip_regions WHERE trip_id = ? LIMIT 1", (trip_id,), one=True
         ) is not None
@@ -1386,7 +1908,7 @@ def create_app(test_config=None):
         return render_template(
             "day_detail.html", trip=trip, day=day, day_number=day_number,
             items=items, accommodations=accommodations, accommodation_status=accommodation_status,
-            transfers_after=transfers_after,
+            transfers_after=transfers_after, timeline=timeline,
             has_regions=has_regions,
             expenses_by_place=expenses_by_place,
             expense_categories=("숙박", "교통", "식비", "관광·티켓", "쇼핑", "기타"),
@@ -1432,6 +1954,10 @@ def create_app(test_config=None):
                     "UPDATE itinerary_items SET sequence = ? WHERE day_id = ? AND place_id = ?",
                     (sequence, day["id"], place["id"]),
                 )
+            db.execute(
+                "DELETE FROM itinerary_event_order WHERE trip_id = ? AND day_id = ?",
+                (trip_id, day["id"]),
+            )
             db.commit()
         except sqlite3.Error:
             db.rollback()
@@ -1698,6 +2224,8 @@ def create_app(test_config=None):
         google_place_id = request.form.get("google_place_id", "").strip() or None
         check_in_date = request.form.get("check_in_date", "")
         check_out_date = request.form.get("check_out_date", "")
+        check_in_time = request.form.get("check_in_time", "15:00") or "15:00"
+        check_out_time = request.form.get("check_out_time", "11:00") or "11:00"
         accommodation_id = request.form.get("accommodation_id", "").strip()
         region_value = request.form.get("region_id", "").strip()
         if not name or not address:
@@ -1713,6 +2241,12 @@ def create_app(test_config=None):
             return redirect(url_for("trip_accommodation", trip_id=trip_id))
         if check_in < trip_start or check_out > trip_end or check_out <= check_in:
             flash("숙소 날짜는 여행 기간 안에서 체크아웃이 체크인보다 뒤가 되도록 선택해 주세요.", "error")
+            return redirect(url_for("trip_accommodation", trip_id=trip_id))
+        try:
+            datetime_time.fromisoformat(check_in_time)
+            datetime_time.fromisoformat(check_out_time)
+        except ValueError:
+            flash("체크인과 체크아웃 시간을 확인해 주세요.", "error")
             return redirect(url_for("trip_accommodation", trip_id=trip_id))
         coordinates = _parse_coordinates(latitude, longitude)
         if coordinates is None and (latitude or longitude):
@@ -1741,18 +2275,21 @@ def create_app(test_config=None):
                 abort(404)
             db.execute(
                 """UPDATE accommodations SET name = ?, address = ?, check_in_date = ?, check_out_date = ?,
+                   check_in_time = ?, check_out_time = ?,
                    latitude = ?, longitude = ?, google_place_id = ?, coordinates_updated_at = ?, region_id = ?
                    WHERE id = ? AND trip_id = ?""",
-                (name, address, check_in_date, check_out_date, *(coordinates or (None, None)), google_place_id,
+                (name, address, check_in_date, check_out_date, check_in_time, check_out_time,
+                 *(coordinates or (None, None)), google_place_id,
                  _utc_now() if google_place_id and coordinates else None, region_id, accommodation_id, trip_id),
             )
         else:
             db.execute(
                 """INSERT INTO accommodations
-                   (trip_id, name, address, check_in_date, check_out_date, latitude, longitude,
+                   (trip_id, name, address, check_in_date, check_out_date, check_in_time, check_out_time, latitude, longitude,
                     google_place_id, coordinates_updated_at, region_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (trip_id, name, address, check_in_date, check_out_date, *(coordinates or (None, None)), google_place_id,
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (trip_id, name, address, check_in_date, check_out_date, check_in_time, check_out_time,
+                 *(coordinates or (None, None)), google_place_id,
                  _utc_now() if google_place_id and coordinates else None, region_id),
             )
         db.commit()
@@ -2032,6 +2569,12 @@ def create_app(test_config=None):
             submitted_ids = [int(place_id) for place_id in payload["place_ids"]]
         except (KeyError, TypeError, ValueError):
             return {"error": "방문 장소 목록을 확인해 주세요."}, 400
+        submitted_event_keys = payload.get("event_keys")
+        if submitted_event_keys is not None and (
+            not isinstance(submitted_event_keys, list)
+            or not all(isinstance(key, str) for key in submitted_event_keys)
+        ):
+            return {"error": "일정 순서 정보가 올바르지 않습니다."}, 400
         rows = query_db(
             "SELECT place_id, is_locked FROM itinerary_items WHERE day_id = ? ORDER BY sequence",
             (day["id"],),
@@ -2054,7 +2597,12 @@ def create_app(test_config=None):
                     "UPDATE itinerary_items SET sequence = ? WHERE day_id = ? AND place_id = ?",
                     (sequence, day["id"], place_id),
                 )
+            if submitted_event_keys is not None:
+                _save_itinerary_event_order(db, trip_id, day["id"], None, submitted_event_keys)
             db.commit()
+        except ValueError:
+            db.rollback()
+            return {"error": "일정이 바뀌어 순서를 저장하지 못했습니다. 새로고침해 주세요."}, 409
         except sqlite3.Error:
             db.rollback()
             return {"error": "방문 순서를 저장하지 못했습니다."}, 500
@@ -2078,6 +2626,7 @@ def create_app(test_config=None):
             abort(404)
         payload = request.get_json(silent=True) or {}
         submitted_days = payload.get("days")
+        submitted_timeline = payload.get("timeline")
         if not isinstance(submitted_days, list):
             return {"error": "일정 데이터 형식이 올바르지 않습니다."}, 400
 
@@ -2130,8 +2679,27 @@ def create_app(test_config=None):
                    WHERE trip_id = ? AND before_item_id IS NOT NULL""",
                 (trip_id,),
             )
+            if isinstance(submitted_timeline, list):
+                timeline_by_day = {}
+                for entry in submitted_timeline:
+                    day_number = int(entry["day_number"])
+                    event_keys = entry["event_keys"]
+                    if day_number not in day_ids or day_number in timeline_by_day or not isinstance(event_keys, list):
+                        raise ValueError("invalid itinerary timeline")
+                    timeline_by_day[day_number] = event_keys
+                if set(timeline_by_day) != set(day_ids):
+                    raise ValueError("incomplete itinerary timeline")
+                try:
+                    for day_number, event_keys in timeline_by_day.items():
+                        _save_itinerary_event_order(db, trip_id, day_ids[day_number], None, event_keys)
+                except ValueError:
+                    # A transfer card follows its destination visit if that visit moves to another day.
+                    # In that case, discard stale event order and rebuild the display from the new schedule.
+                    db.execute("DELETE FROM itinerary_event_order WHERE trip_id = ?", (trip_id,))
+            else:
+                db.execute("DELETE FROM itinerary_event_order WHERE trip_id = ?", (trip_id,))
             db.commit()
-        except sqlite3.Error:
+        except (sqlite3.Error, KeyError, TypeError, ValueError):
             db.rollback()
             return {"error": "일정을 저장하지 못했습니다."}, 500
         return {"ok": True}
@@ -2197,6 +2765,88 @@ def _accommodation_status(accommodation, day_date):
 
 def _accommodations_for_date(accommodations, day_date):
     return [stay for stay in accommodations if _accommodation_status(stay, day_date)]
+
+
+def _itinerary_event_keys_for_day(connection, trip_id, day_id, region_id=None):
+    day = connection.execute(
+        "SELECT date FROM itinerary_days WHERE id = ? AND trip_id = ?", (day_id, trip_id)
+    ).fetchone()
+    if day is None:
+        return set()
+    event_keys = set()
+    place_rows = connection.execute(
+        """SELECT p.id FROM itinerary_items ii JOIN places p ON p.id = ii.place_id
+           WHERE ii.day_id = ? AND p.trip_id = ?""" + (" AND p.region_id = ?" if region_id is not None else ""),
+        (day_id, trip_id, region_id) if region_id is not None else (day_id, trip_id),
+    )
+    event_keys.update(f"place:{row['id']}" for row in place_rows)
+    transfer_rows = connection.execute(
+        "SELECT id FROM itinerary_transfers WHERE trip_id = ? AND day_id = ?"
+        + (" AND (from_region_id = ? OR to_region_id = ?)" if region_id is not None else ""),
+        (trip_id, day_id, region_id, region_id) if region_id is not None else (trip_id, day_id),
+    )
+    event_keys.update(f"transfer:{row['id']}" for row in transfer_rows)
+    stays = connection.execute(
+        "SELECT id, check_in_date, check_out_date FROM accommodations WHERE trip_id = ?"
+        + (" AND region_id = ?" if region_id is not None else "")
+        + " AND (check_in_date = ? OR check_out_date = ?)",
+        (trip_id, region_id, day["date"], day["date"])
+        if region_id is not None else (trip_id, day["date"], day["date"]),
+    )
+    for stay in stays:
+        if stay["check_in_date"] == day["date"]:
+            event_keys.add(f"stay-checkin:{stay['id']}")
+        if stay["check_out_date"] == day["date"]:
+            event_keys.add(f"stay-checkout:{stay['id']}")
+    return event_keys
+
+
+def _save_itinerary_event_order(connection, trip_id, day_id, region_id, event_keys):
+    if len(event_keys) != len(set(event_keys)):
+        raise ValueError("duplicate itinerary event")
+    expected_keys = _itinerary_event_keys_for_day(connection, trip_id, day_id, region_id)
+    if set(event_keys) != expected_keys:
+        raise ValueError("itinerary events changed")
+    if region_id is None:
+        connection.execute(
+            "DELETE FROM itinerary_event_order WHERE trip_id = ? AND day_id = ? AND region_id IS NULL",
+            (trip_id, day_id),
+        )
+    else:
+        connection.execute(
+            "DELETE FROM itinerary_event_order WHERE trip_id = ? AND day_id = ? AND region_id = ?",
+            (trip_id, day_id, region_id),
+        )
+    connection.executemany(
+        """INSERT INTO itinerary_event_order (trip_id, day_id, region_id, event_key, sequence)
+           VALUES (?, ?, ?, ?, ?)""",
+        [(trip_id, day_id, region_id, event_key, sequence)
+         for sequence, event_key in enumerate(event_keys, 1)],
+    )
+
+
+def _order_itinerary_events(connection, trip_id, day_id, region_id, events):
+    regional_order = connection.execute(
+        "SELECT event_key, sequence FROM itinerary_event_order WHERE trip_id = ? AND day_id = ? AND region_id IS ? ORDER BY sequence",
+        (trip_id, day_id, region_id),
+    ).fetchall()
+    global_order = []
+    if region_id is not None and not regional_order:
+        global_order = connection.execute(
+            "SELECT event_key, sequence FROM itinerary_event_order WHERE trip_id = ? AND day_id = ? AND region_id IS NULL ORDER BY sequence",
+            (trip_id, day_id),
+        ).fetchall()
+    regional_rank = {row["event_key"]: row["sequence"] for row in regional_order}
+    global_rank = {row["event_key"]: row["sequence"] for row in global_order}
+    default_rank = {event["key"]: index for index, event in enumerate(events)}
+    return sorted(
+        events,
+        key=lambda event: (
+            (0, regional_rank[event["key"]]) if event["key"] in regional_rank
+            else (1, global_rank[event["key"]]) if event["key"] in global_rank
+            else (2, default_rank[event["key"]])
+        ),
+    )
 
 
 def _accommodation_for_date(accommodations, day_date):

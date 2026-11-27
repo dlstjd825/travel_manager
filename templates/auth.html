@@ -20,6 +20,7 @@
      {% endif %}
     {% endwith %}
     <form class="auth-form" method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
      <label>아이디<input autocomplete="username" name="username" type="text" minlength="3" maxlength="24" required/></label>
      <label>비밀번호<input autocomplete="{{ 'new-password' if mode == 'register' else 'current-password' }}" name="password" type="password" minlength="{{ 10 if mode == 'register' else 1 }}" required/></label>
      {% if mode == 'register' %}<small>비밀번호는 10자 이상이어야 합니다.</small>{% endif %}
