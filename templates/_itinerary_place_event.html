@@ -1,5 +1,4 @@
-<li class="itinerary-stop {{ 'is-locked' if item.is_locked else '' }}" data-event-key="{{ event_key }}" data-place-id="{{ item.place_id }}" draggable="{{ 'false' if item.is_locked or selected_region else 'true' }}">
- {% if not selected_region %}<span aria-hidden="true" class="drag-handle">⠿</span>{% endif %}
+<li class="itinerary-stop {{ 'is-locked' if item.is_locked else '' }}" data-event-key="{{ event_key }}" data-place-id="{{ item.place_id }}" draggable="false">
  <span aria-label="{{ '식당' if item.category == 'restaurant' else '관광지' }}" class="place-pin category-pin {{ 'restaurant-pin' if item.category == 'restaurant' else 'attraction-pin' }}" role="img">
   {% if item.category == 'restaurant' %}
   <svg aria-hidden="true" viewbox="0 0 24 24"><path d="M6 3v7m-3-7v4a3 3 0 0 0 6 0V3M6 10v11m10-18v18m0-18c3 2 4 5 4 8h-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>

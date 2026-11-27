@@ -4,7 +4,6 @@
     const reorderUrl = dayList.dataset.reorderUrl;
     const calendarDates = zones.map((zone) => zone.dataset.date);
     const statusNode = document.getElementById('itinerary-save-status');
-    let draggedItem = null;
     let draggedDayCard = null;
     let previousLayout = null;
     let previousDayOrder = null;
@@ -60,16 +59,6 @@
       const card = zone.closest('.day-card');
       const link = card.querySelector('.day-detail-link');
       if (link) link.href = zone.dataset.detailUrl;
-    }
-
-    function placeBeforeElement(list, y) {
-      const others = [...list.querySelectorAll('.itinerary-stop:not(.dragging)')];
-      return others.reduce((closest, item) => {
-        const box = item.getBoundingClientRect();
-        const offset = y - box.top - box.height / 2;
-        if (offset < 0 && offset > closest.offset) return {offset, item};
-        return closest;
-      }, {offset: Number.NEGATIVE_INFINITY, item: null}).item;
     }
 
     async function saveLayout() {
@@ -129,46 +118,6 @@
         statusNode.textContent = error.message;
       }
     }
-
-    document.querySelectorAll('.itinerary-stop').forEach((item) => {
-      item.addEventListener('dragstart', (event) => {
-        if (item.classList.contains('is-locked')) {
-          event.preventDefault();
-          return;
-        }
-        draggedItem = item;
-        event.stopPropagation();
-        takeSnapshot();
-        item.classList.add('dragging');
-        event.dataTransfer.effectAllowed = 'move';
-        event.dataTransfer.setData('text/plain', item.dataset.placeId);
-      });
-      item.addEventListener('dragend', () => item.classList.remove('dragging'));
-    });
-
-    zones.forEach((zone) => {
-      const list = zone.querySelector('.itinerary-stops');
-      zone.addEventListener('dragover', (event) => {
-        if (!draggedItem) return;
-        event.preventDefault();
-        zone.classList.add('drag-over');
-        const after = placeBeforeElement(list, event.clientY);
-        if (after) list.insertBefore(draggedItem, after);
-        else list.append(draggedItem);
-      });
-      zone.addEventListener('dragleave', (event) => {
-        if (!zone.contains(event.relatedTarget)) zone.classList.remove('drag-over');
-      });
-      zone.addEventListener('drop', async (event) => {
-        if (!draggedItem) return;
-        event.preventDefault();
-        zone.classList.remove('drag-over');
-        draggedItem.classList.remove('dragging');
-        draggedItem = null;
-        updateEmptyDays();
-        await saveLayout();
-      });
-    });
 
     document.querySelectorAll('.day-drag-handle').forEach((handle) => {
       let pointerStart = null;

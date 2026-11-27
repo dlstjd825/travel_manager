@@ -8,7 +8,7 @@
   </title>
   <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
   <link href="{{ url_for('static', filename='css/trip.css', v='6') }}" rel="stylesheet"/>
-  <link href="{{ url_for('static', filename='css/itinerary.css', v='4') }}" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/itinerary.css', v='6') }}" rel="stylesheet"/>
  </head>
  <body>
   <main class="shell place-journal-page">
@@ -27,7 +27,7 @@
    <section class="trip-section-heading place-journal-heading">
     <div class="trip-section-heading-copy">
      <p class="trip-section-kicker">
-      {{ trip.city }}{% if place.day_number %} &middot; Day {{ place.day_number }}{% endif %}
+      {{ trip.title }}
      </p>
      <h1>
       {{ place.name }}

@@ -7,7 +7,7 @@
    {{ trip.title }} 일정 &middot; Trip Manager
   </title>
   <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
-  <link href="{{ url_for('static', filename='css/itinerary.css', v='4') }}" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/itinerary.css', v='6') }}" rel="stylesheet"/>
  </head>
  <body>
   <main class="shell">
@@ -26,13 +26,13 @@
    <section class="trip-section-heading trip-section-heading-with-actions">
     <div class="trip-section-heading-copy">
      <p class="trip-section-kicker">
-      {{ trip.city }}
+      {{ trip.title }}
      </p>
      <h1>
       일정 관리
      </h1>
      <p>
-      {{ trip.title }} &middot; {{ selected_region.label ~ ' 일정 · ' if selected_region else '' }}{{ trip.start_date }} &mdash; {{ trip.end_date }} &middot; {{ night_count }}박 {{ day_count }}일
+      {{ selected_region.label ~ ' 일정 · ' if selected_region else '' }}{{ trip.start_date }} &mdash; {{ trip.end_date }} &middot; {{ night_count }}박 {{ day_count }}일
      </p>
     </div>
     <div class="itinerary-actions">
@@ -233,7 +233,7 @@
           ☼
          </span>
          <p>
-          {% if day.blocked_reason %}{{ day.blocked_reason }}{% else %}이 날은 비워 두었습니다. 장소를 여기로 옮길 수 있어요.{% endif %}
+          {% if day.blocked_reason %}{{ day.blocked_reason }}{% else %}이 날은 비워 두었습니다.{% endif %}
          </p>
         </div>
        </div>
@@ -301,7 +301,7 @@
   </script>
   {% endif %}
   {% if has_itinerary and not selected_region %}
-  <script defer="True" src="{{ url_for('static', filename='js/itinerary.js') }}">
+  <script defer="True" src="{{ url_for('static', filename='js/itinerary.js', v='3') }}">
   </script>
   {% endif %}
   <script defer src="{{ url_for('static', filename='js/itinerary-focus.js') }}"></script>

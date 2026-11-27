@@ -22,6 +22,13 @@ if (stopList) {
     return offset < 0 && offset > closest.offset ? {offset, node} : closest;
   }, {offset: Number.NEGATIVE_INFINITY, node: null}).node;
 
+  const moveDraggedEvent = (pointerY) => {
+    const before = findBeforeNode(pointerY);
+    if (before) stopList.insertBefore(draggedEvent, before);
+    else stopList.append(draggedEvent);
+    refreshNumbers();
+  };
+
   const saveOrder = async (snapshot) => {
     const submittedPlaceIds = placeIds();
     statusNode.textContent = '일정 순서를 저장하고 있어요…';
@@ -80,15 +87,61 @@ if (stopList) {
       originalNodes = null;
       dropHandled = false;
     });
+
+    const handle = item.querySelector('[data-timeline-drag-handle]');
+    if (handle) {
+      let pointerStartY = 0;
+      let pointerStarted = false;
+      let pointerSnapshot = null;
+
+      handle.addEventListener('pointerdown', (event) => {
+        if (event.button !== undefined && event.button !== 0) return;
+        event.preventDefault();
+        pointerStartY = event.clientY;
+        pointerStarted = false;
+        pointerSnapshot = null;
+        handle.setPointerCapture(event.pointerId);
+      });
+
+      handle.addEventListener('pointermove', (event) => {
+        if (!handle.hasPointerCapture(event.pointerId)) return;
+        if (!pointerStarted && Math.abs(event.clientY - pointerStartY) < 6) return;
+        if (!pointerStarted) {
+          pointerStarted = true;
+          pointerSnapshot = timelineNodes();
+          draggedEvent = item;
+          item.classList.add('timeline-dragging');
+        }
+        event.preventDefault();
+        moveDraggedEvent(event.clientY);
+      });
+
+      const finishPointerDrag = async (event, cancelled = false) => {
+        if (!handle.hasPointerCapture(event.pointerId)) return;
+        handle.releasePointerCapture(event.pointerId);
+        if (pointerStarted) {
+          item.classList.remove('timeline-dragging');
+          if (cancelled) {
+            restoreNodes(pointerSnapshot);
+            refreshNumbers();
+          } else {
+            await saveOrder(pointerSnapshot);
+          }
+          draggedEvent = null;
+        }
+        pointerStarted = false;
+        pointerSnapshot = null;
+      };
+
+      handle.addEventListener('pointerup', (event) => finishPointerDrag(event));
+      handle.addEventListener('pointercancel', (event) => finishPointerDrag(event, true));
+    }
   });
 
   stopList.addEventListener('dragover', (event) => {
     if (!draggedEvent) return;
     event.preventDefault();
-    const before = findBeforeNode(event.clientY);
-    if (before) stopList.insertBefore(draggedEvent, before);
-    else stopList.append(draggedEvent);
-    refreshNumbers();
+    moveDraggedEvent(event.clientY);
   });
 
   stopList.addEventListener('drop', async (event) => {

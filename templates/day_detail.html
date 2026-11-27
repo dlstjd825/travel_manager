@@ -7,7 +7,7 @@
    Day {{ day_number }} &middot; {{ trip.title }} &middot; Trip Manager
   </title>
   <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
-  <link href="{{ url_for('static', filename='css/itinerary.css', v='4') }}" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/itinerary.css', v='6') }}" rel="stylesheet"/>
  </head>
  <body>
   <main class="shell day-detail-page">
@@ -290,7 +290,7 @@
   <script async="" src="https://maps.googleapis.com/maps/api/js?key={{ config.GOOGLE_MAPS_BROWSER_API_KEY|urlencode }}&amp;loading=async&amp;callback=initTravelMap&amp;v=weekly">
   </script>
   {% endif %}
-  <script defer="True" src="{{ url_for('static', filename='js/day-detail.js') }}">
+  <script defer="True" src="{{ url_for('static', filename='js/day-detail.js', v='2') }}">
   </script>
   {% include '_preserve_scroll.html' %}
  </body>

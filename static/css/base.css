@@ -220,6 +220,7 @@ details[open] > :not(summary) {
   margin: 0;
   font-size: 18px;
   letter-spacing: -.5px;
+  align-items: center;
 }
 
 .panel-symbol {
