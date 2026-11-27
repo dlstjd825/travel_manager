@@ -7,7 +7,7 @@
    {{ trip.title }} 일정 &middot; Trip Manager
   </title>
   <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
-  <link href="{{ url_for('static', filename='css/itinerary.css', v='3') }}" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/itinerary.css', v='4') }}" rel="stylesheet"/>
  </head>
  <body>
   <main class="shell">
@@ -36,6 +36,7 @@
      </p>
     </div>
     <div class="itinerary-actions">
+     <a class="secondary-button" href="{{ url_for('trip_regions_page', trip_id=trip.id) }}">국가 추가</a>
      {% if selected_region %}
      <form action="{{ url_for('recommend_region_itinerary', trip_id=trip.id, region_id=selected_region.id) }}" method="post">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
@@ -59,7 +60,7 @@
    </section>
    {% include '_trip_nav.html' %}
    {% if regions %}
-   <nav aria-label="국가별 일정" class="region-filter">
+   <section class="region-filter">
     <span>국가별 일정</span>
     <div class="region-filter-buttons">
      <a class="region-filter-button {{ 'is-active' if not selected_region else '' }}" href="{{ url_for('trip_itinerary', trip_id=trip.id) }}" {% if not selected_region %}aria-current="page"{% endif %}>전체</a>
@@ -67,7 +68,7 @@
      <a class="region-filter-button {{ 'is-active' if selected_region and selected_region.id == region.id else '' }}" href="{{ url_for('trip_itinerary', trip_id=trip.id, region_id=region.id) }}" {% if selected_region and selected_region.id == region.id %}aria-current="page"{% endif %}>{{ region.label }}</a>
      {% endfor %}
     </div>
-   </nav>
+   </section>
    {% endif %}
    {% if not regions %}<details class="recommendation-settings">
     <summary>

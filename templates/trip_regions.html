@@ -3,21 +3,21 @@
  <head>
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1" name="viewport"/>
-  <title>국가 구간 · {{ trip.title }} · Trip Manager</title>
+  <title>국가 추가 · {{ trip.title }} · Trip Manager</title>
   <link href="{{ url_for('static', filename='css/base.css') }}" rel="stylesheet"/>
-  <link href="{{ url_for('static', filename='css/trip.css', v='5') }}" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/trip.css', v='6') }}" rel="stylesheet"/>
  </head>
  <body>
   <main class="shell trip-module-page">
    <header class="topbar">
     <a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">✳</span> Trip <span class="brand-light">Manager</span></a>
-    <a class="back-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">&larr; {{ trip.title }} 개요</a>
+    <a class="back-link" href="{{ url_for('trip_itinerary', trip_id=trip.id) }}">&larr; 일정 관리</a>
    </header>
-   {% set active_page = 'regions' %}
+   {% set active_page = 'itinerary' %}
    <section class="trip-section-heading">
     <div class="trip-section-heading-copy">
      <p class="trip-section-kicker">{{ trip.city }}</p>
-     <h1>국가별 체류 구간</h1>
+     <h1>국가 추가</h1>
      <p>여행 기간 안에서 국가와 지역별 체류 날짜를 관리합니다.</p>
     </div>
    </section>
@@ -29,8 +29,8 @@
    <section class="panel trip-regions-panel">
     <div class="panel-heading trip-regions-heading">
      <div>
-      <h2>국가/지역 목록 <span class="count-value">{{ regions|length }}곳</span></h2>
-      <p class="overview-caption">국가 구간 날짜가 겹치는 날에는 국가 간 이동 일정이 자동으로 추가됩니다.</p>
+      <h2>추가한 국가/지역 <span class="count-value">{{ regions|length }}곳</span></h2>
+      <p class="overview-caption">국가 체류 날짜가 겹치는 날에는 국가 간 이동 일정이 자동으로 추가됩니다.</p>
      </div>
      <button aria-controls="trip-region-editor" aria-expanded="false" class="secondary-button" id="add-trip-region" type="button">국가 추가</button>
     </div>
@@ -40,7 +40,7 @@
       <label>국가/지역명<input maxlength="100" name="label" placeholder="예: 체코 · 프라하" required/></label>
       <label>시작일<input max="{{ trip.end_date }}" min="{{ trip.start_date }}" name="start_date" required type="date" value="{{ new_region_start }}"/></label>
       <label>종료일<input max="{{ trip.end_date }}" min="{{ trip.start_date }}" name="end_date" required type="date" value="{{ new_region_end }}"/></label>
-      <button class="primary-button" type="submit">국가 구간 저장</button>
+      <button class="primary-button" type="submit">국가 추가</button>
      </form>
     </div>
     {% if regions %}
@@ -66,7 +66,7 @@
      {% endfor %}
     </div>
     {% else %}
-    <p class="trip-regions-empty">아직 국가 구간이 없습니다. 국가 추가를 눌러 첫 구간을 등록하세요.</p>
+    <p class="trip-regions-empty">아직 추가한 국가가 없습니다. 국가 추가를 눌러 첫 국가를 등록하세요.</p>
     {% endif %}
    </section>
 
@@ -78,7 +78,16 @@
     {% if country_transfers %}
     <ul class="country-transfer-list">
      {% for transfer in country_transfers %}
-     <li><span><strong>{{ transfer.date }} · {{ transfer.from_region_label }} → {{ transfer.to_region_label }}</strong><small>{{ transfer.origin }} → {{ transfer.destination }}</small></span></li>
+     <li>
+      <span><strong>{{ transfer.date }} · {{ transfer.from_region_label }} → {{ transfer.to_region_label }}</strong><small>{{ transfer.origin }} → {{ transfer.destination }}</small></span>
+      <form action="{{ url_for('update_country_transfer_mode', trip_id=trip.id, transfer_id=transfer.id) }}" class="country-transfer-mode-form" method="post">
+       <input name="csrf_token" type="hidden" value="{{ csrf_token }}"/>
+       <label>이동 수단<select aria-label="{{ transfer.from_region_label }}에서 {{ transfer.to_region_label }} 이동 수단" name="transport_mode">
+        {% for mode, label in country_transfer_modes.items() %}<option value="{{ mode }}" {% if mode == transfer.transport_mode %}selected{% endif %}>{{ label }}</option>{% endfor %}
+       </select></label>
+       <button class="secondary-button" type="submit">저장</button>
+      </form>
+     </li>
      {% endfor %}
     </ul>
     {% else %}

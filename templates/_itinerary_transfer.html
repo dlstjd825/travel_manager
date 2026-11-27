@@ -3,6 +3,7 @@
   <span aria-hidden="true" class="itinerary-transfer-icon">↗</span>
   <div>
    <strong>국가 간 이동</strong>
+   <small class="itinerary-transfer-mode">{{ country_transfer_modes.get(transfer.transport_mode, '이동 수단 미정') }}</small>
    <p>{{ transfer.origin }} &rarr; {{ transfer.destination }}</p>
   </div>
  </div>

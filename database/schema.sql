@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS itinerary_transfers (
     before_item_id INTEGER UNIQUE REFERENCES itinerary_items(id) ON DELETE SET NULL,
     from_region_id INTEGER REFERENCES trip_regions(id) ON DELETE SET NULL,
     to_region_id INTEGER REFERENCES trip_regions(id) ON DELETE SET NULL,
+    transport_mode TEXT NOT NULL DEFAULT 'unselected' CHECK (transport_mode IN ('unselected', 'flight', 'train', 'bus', 'car', 'ferry', 'other')),
     origin TEXT NOT NULL,
     destination TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP

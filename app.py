@@ -11,6 +11,15 @@ from pathlib import Path
 
 _login_window_seconds = 600
 _login_max_attempts = 8
+COUNTRY_TRANSFER_MODES = {
+    "unselected": "이동 수단 미정",
+    "flight": "항공기",
+    "train": "기차",
+    "bus": "버스",
+    "car": "자동차",
+    "ferry": "배",
+    "other": "기타",
+}
 
 from dotenv import load_dotenv
 from flask import Flask, abort, flash, g, redirect, render_template, request, send_from_directory, session, url_for
@@ -671,7 +680,7 @@ def create_app(test_config=None):
             (trip_id,),
         )
         country_transfers = query_db(
-            """SELECT it.id, it.origin, it.destination, d.date,
+            """SELECT it.id, it.origin, it.destination, it.transport_mode, d.date,
                       fr.label AS from_region_label, tr.label AS to_region_label
                FROM itinerary_transfers it
                JOIN itinerary_days d ON d.id = it.day_id
@@ -685,6 +694,7 @@ def create_app(test_config=None):
         return render_template(
             "trip_regions.html", trip=trip, regions=regions,
             country_transfers=country_transfers,
+            country_transfer_modes=COUNTRY_TRANSFER_MODES,
             new_region_start=default_region_start, new_region_end=trip["end_date"],
         )
 
@@ -721,7 +731,7 @@ def create_app(test_config=None):
             db.rollback()
             flash("이미 같은 이름의 국가/지역 구간이 있습니다.", "error")
             return redirect(url_for("trip_regions_page", trip_id=trip_id))
-        flash(f"{label} 구간을 여행에 추가했습니다. 장소와 숙소를 등록할 때 이 구간을 선택하세요.", "success")
+        flash(f"{label}을(를) 여행에 추가했습니다. 장소와 숙소를 등록할 때 이 국가를 선택하세요.", "success")
         return redirect(url_for("trip_regions_page", trip_id=trip_id))
 
     @app.post("/trips/<int:trip_id>/regions/<int:region_id>/update")
@@ -756,7 +766,7 @@ def create_app(test_config=None):
             get_db().rollback()
             flash("이미 같은 이름의 국가/지역 구간이 있습니다.", "error")
             return redirect(url_for("trip_regions_page", trip_id=trip_id))
-        flash(f"{label} 구간을 수정했습니다.", "success")
+        flash(f"{label} 정보를 수정했습니다.", "success")
         return redirect(url_for("trip_regions_page", trip_id=trip_id))
 
     @app.post("/trips/<int:trip_id>/regions/<int:region_id>/delete")
@@ -774,7 +784,28 @@ def create_app(test_config=None):
         db.commit()
         if cursor.rowcount == 0:
             abort(404)
-        flash("국가 구간을 삭제했습니다. 연결된 장소와 숙소 정보는 여행에 남아 있습니다.", "success")
+        flash("국가를 삭제했습니다. 연결된 장소와 숙소 정보는 여행에 남아 있습니다.", "success")
+        return redirect(url_for("trip_regions_page", trip_id=trip_id))
+
+    @app.post("/trips/<int:trip_id>/country-transfers/<int:transfer_id>/mode")
+    def update_country_transfer_mode(trip_id, transfer_id):
+        transfer = query_db(
+            """SELECT id FROM itinerary_transfers WHERE id = ? AND trip_id = ?
+               AND from_region_id IS NOT NULL AND to_region_id IS NOT NULL""",
+            (transfer_id, trip_id), one=True,
+        )
+        if transfer is None:
+            abort(404)
+        mode = request.form.get("transport_mode", "")
+        if mode not in COUNTRY_TRANSFER_MODES:
+            flash("이동 수단을 다시 선택해 주세요.", "error")
+            return redirect(url_for("trip_regions_page", trip_id=trip_id))
+        get_db().execute(
+            "UPDATE itinerary_transfers SET transport_mode = ? WHERE id = ? AND trip_id = ?",
+            (mode, transfer_id, trip_id),
+        )
+        get_db().commit()
+        flash(f"이동 수단을 ‘{COUNTRY_TRANSFER_MODES[mode]}’(으)로 저장했습니다.", "success")
         return redirect(url_for("trip_regions_page", trip_id=trip_id))
 
     @app.post("/trips/<int:trip_id>/invitations")
@@ -1477,6 +1508,7 @@ def create_app(test_config=None):
         return render_template(
             "itinerary.html", trip=trip, days=days, has_itinerary=bool(day_rows),
             accommodations=accommodations, regions=regions, selected_region=selected_region,
+            country_transfer_modes=COUNTRY_TRANSFER_MODES,
             map_points=map_points,
             map_total=len(places) + sum(1 for stay in accommodations if stay["latitude"] is not None),
             map_days=[
@@ -1866,6 +1898,7 @@ def create_app(test_config=None):
             "day_detail.html", trip=trip, day=day, day_number=day_number,
             items=items, accommodations=accommodations, accommodation_status=accommodation_status,
             transfers_after=transfers_after, timeline=timeline,
+            country_transfer_modes=COUNTRY_TRANSFER_MODES,
             has_regions=has_regions,
             expenses_by_place=expenses_by_place,
             expense_categories=("숙박", "교통", "식비", "관광·티켓", "쇼핑", "기타"),

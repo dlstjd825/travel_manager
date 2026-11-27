@@ -57,6 +57,9 @@ def init_db():
         "itinerary_items": {
             "region_id": "INTEGER REFERENCES trip_regions(id) ON DELETE SET NULL",
         },
+        "itinerary_transfers": {
+            "transport_mode": "TEXT NOT NULL DEFAULT 'unselected'",
+        },
         "trip_expenses": {
             "place_id": "INTEGER REFERENCES places(id) ON DELETE SET NULL",
         },
